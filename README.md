@@ -58,6 +58,8 @@ chmod +x start_visual.sh scripts/linux/*.sh
 
 如果 Hugging Face 模型需要授权，直接打开 `start_visual.sh`，把顶部的 `HF_TOKEN_MANUAL=""` 改成你的 token，例如 `HF_TOKEN_MANUAL="hf_xxx"`，然后再运行 `./start_visual.sh --runpod-full --port 7860`。
 
+如果安装 Hunyuan 依赖时报 `tokenizers==0.15.0` 和 `transformers==4.48.0` 冲突，当前 `scripts/linux/setup_hunyuan_i2v.sh` 会自动生成临时兼容版 requirements，跳过旧的 `tokenizers==0.15.0` 固定版本，让 `transformers` 安装匹配的 `tokenizers>=0.21,<0.22`。
+
 如果 HunyuanVideo、权重或 ComfyUI workflow 不在默认位置，可以启动时直接传入：
 
 ```bash

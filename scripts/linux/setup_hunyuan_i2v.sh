@@ -85,6 +85,44 @@ need_cmd() {
 need_cmd git
 need_cmd python3
 
+install_hunyuan_requirements() {
+  local requirements_path="$HUNYUAN_ROOT/requirements.txt"
+  local compat_path="/tmp/hunyuan_requirements_compat.txt"
+
+  if [[ ! -f "$requirements_path" ]]; then
+    return 0
+  fi
+
+  python3 - "$requirements_path" "$compat_path" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+
+skipped: list[str] = []
+out: list[str] = []
+for line in source.read_text(encoding="utf-8").splitlines():
+    normalized = line.strip().lower()
+    package_name = re.split(r"[<>=!~;\[\s]", normalized, maxsplit=1)[0]
+    if package_name == "tokenizers" and "==0.15.0" in normalized:
+        skipped.append(line)
+        continue
+    out.append(line)
+
+target.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+if skipped:
+    print("Using compatible Hunyuan requirements: skipped old tokenizers pin(s):")
+    for item in skipped:
+        print(f"  {item}")
+    print("transformers will install a matching tokenizers version automatically.")
+PY
+
+  python3 -m pip install -r "$compat_path"
+}
+
 if [[ ! -d "$HUNYUAN_ROOT/.git" ]]; then
   mkdir -p "$(dirname "$HUNYUAN_ROOT")"
   git clone "$HUNYUAN_REPO_URL" "$HUNYUAN_ROOT"
@@ -94,9 +132,7 @@ fi
 
 if [[ "$NO_INSTALL" -eq 0 ]]; then
   python3 -m pip install --upgrade pip
-  if [[ -f "$HUNYUAN_ROOT/requirements.txt" ]]; then
-    python3 -m pip install -r "$HUNYUAN_ROOT/requirements.txt"
-  fi
+  install_hunyuan_requirements
   python3 -m pip install "huggingface_hub[cli]" hf_transfer
 fi
 
