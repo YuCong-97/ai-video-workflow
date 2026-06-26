@@ -1,0 +1,45 @@
+services:
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-short-drama-pipeline:latest
+    working_dir: /app
+    environment:
+      PYTHONPATH: /app
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      COMFYUI_URL: ${COMFYUI_URL:-http://host.docker.internal:8188}
+      HUNYUAN_ROOT: ${HUNYUAN_ROOT:-/workspace/HunyuanVideo-1.5}
+      HUNYUAN_CKPT: ${HUNYUAN_CKPT:-/models/hunyuan/ckpts}
+      MODEL_DIR: ${MODEL_DIR:-/models}
+    volumes:
+      - .:/app
+      - ${MODEL_DIR_HOST:-./models}:/models
+      - ${HUNYUAN_DIR_HOST:-./external/HunyuanVideo-1.5}:/workspace/HunyuanVideo-1.5
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    stdin_open: true
+    tty: true
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-short-drama-pipeline:latest
+    working_dir: /app
+    command: ["sh", "-c", "uvicorn web.app:app --host 0.0.0.0 --port ${APP_PORT:-7860}"]
+    environment:
+      PYTHONPATH: /app
+      APP_PORT: ${APP_PORT:-7860}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      COMFYUI_URL: ${COMFYUI_URL:-http://host.docker.internal:8188}
+      HUNYUAN_ROOT: ${HUNYUAN_ROOT:-/workspace/HunyuanVideo-1.5}
+      HUNYUAN_CKPT: ${HUNYUAN_CKPT:-/models/hunyuan/ckpts}
+      MODEL_DIR: ${MODEL_DIR:-/models}
+    ports:
+      - "${APP_PORT:-7860}:${APP_PORT:-7860}"
+    volumes:
+      - .:/app
+      - ${MODEL_DIR_HOST:-./models}:/models
+      - ${HUNYUAN_DIR_HOST:-./external/HunyuanVideo-1.5}:/workspace/HunyuanVideo-1.5
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

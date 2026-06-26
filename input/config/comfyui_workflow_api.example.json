@@ -1,0 +1,11 @@
+{
+  "note": "Export an API-format ComfyUI workflow to input/config/comfyui_workflow_api.json.",
+  "placeholders": {
+    "positive_prompt": "__PROMPT__",
+    "negative_prompt": "__NEGATIVE_PROMPT__",
+    "seed": "__SEED__",
+    "width": "__WIDTH__",
+    "height": "__HEIGHT__",
+    "output_prefix": "__OUTPUT_PREFIX__"
+  }
+}

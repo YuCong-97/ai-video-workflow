@@ -1,0 +1,11 @@
+{
+  "style_presets": [
+    {
+      "style_id": "cinematic_realism",
+      "name": "Cinematic Realism",
+      "prompt": "cinematic realism, realistic lighting, highly detailed, film still",
+      "negative_prompt": "blurry, low quality, distorted face, extra fingers, bad hands, duplicated body, inconsistent clothing, low resolution, watermark, text"
+    }
+  ]
+}
+

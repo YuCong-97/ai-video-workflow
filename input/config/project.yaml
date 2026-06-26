@@ -1,0 +1,74 @@
+project_name: ai_short_drama
+style: cinematic_realism
+language: zh-CN
+
+episode:
+  target_duration_sec: 60
+  shots_per_episode: 12
+  avg_shot_duration_sec: 4
+
+llm:
+  provider: openai
+  model_script: gpt-5
+  model_storyboard: gpt-5-mini
+
+image_gen:
+  tool: comfyui
+  comfyui_url: ${COMFYUI_URL}
+  workflow_path: input/config/comfyui_workflow_api.json
+  timeout_sec: 900
+  model: flux
+  width: 832
+  height: 1216
+  num_candidates: 4
+
+video_gen:
+  tool: hunyuanvideo
+  mode: i2v
+  duration_sec: 4
+  fps: 24
+  seeds: [1001, 1002, 1003]
+  motion_levels: [low, medium]
+  hunyuan_root: ${HUNYUAN_ROOT}
+  hunyuan_ckpt: ${HUNYUAN_CKPT}
+  model_dir: ${MODEL_DIR}
+  resolution: 720p
+  infer_steps: 50
+  video_length: 129
+  cfg_scale: 6.0
+  command_template: >-
+    cd {hunyuan_root:q} && python3 sample_image2video.py
+    --model HYVideo-T/2
+    --prompt {prompt:q}
+    --i2v-mode
+    --i2v-image-path {image:q}
+    --i2v-resolution {resolution:q}
+    --infer-steps {infer_steps}
+    --video-length {video_length}
+    --flow-reverse
+    --flow-shift {flow_shift}
+    --seed {seed}
+    --embedded-cfg-scale {cfg_scale}
+    --use-cpu-offload
+    --save-path {save_dir:q}
+
+pipeline:
+  real_generation_timeout_sec: 7200
+
+tts:
+  provider: edge_tts
+  voice_default_female: zh-CN-XiaoxiaoNeural
+  voice_default_male: zh-CN-YunxiNeural
+
+screening:
+  sharpness_weight: 0.2
+  face_weight: 0.25
+  consistency_weight: 0.3
+  prompt_match_weight: 0.25
+  auto_pass_score: 0.78
+
+editing:
+  subtitle_style: drama_default
+  resolution: 1080x1920
+  intro_sec: 2
+  outro_sec: 2

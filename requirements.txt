@@ -1,0 +1,13 @@
+pyyaml
+pandas
+opencv-python-headless
+edge-tts
+tqdm
+openai
+requests
+numpy
+Pillow
+python-dotenv
+fastapi
+uvicorn[standard]
+python-multipart
