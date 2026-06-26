@@ -126,6 +126,19 @@ def require_comfyui_config(image_gen: dict[str, Any]) -> tuple[str, Path, int]:
     return url, workflow_path, timeout_sec
 
 
+def ensure_comfyui_reachable(url: str, logger: logging.Logger) -> None:
+    try:
+        response = requests.get(f"{url}/system_stats", timeout=5)
+        response.raise_for_status()
+    except Exception as exc:
+        logger.error("ComfyUI is not reachable: %s. Start ComfyUI or run ./start_visual.sh --start-comfyui.", url)
+        raise RuntimeError(
+            f"ComfyUI is not reachable: {url}. "
+            "Start ComfyUI on port 8188, run ./start_visual.sh --start-comfyui, "
+            "or set COMFYUI_URL to the correct service URL."
+        ) from exc
+
+
 def submit_comfyui_workflow(
     row: dict[str, str],
     image_gen: dict[str, Any],
@@ -187,6 +200,14 @@ def main() -> None:
     prompt_csv = find_prompt_csv(args.episode, args.prompt_csv)
     rows = load_rows(prompt_csv)
     logger.info("script=05_batch_image_gen input=%s rows=%s dry_run=%s", prompt_csv, len(rows), args.dry_run)
+
+    if not args.dry_run:
+        try:
+            url, _, _ = require_comfyui_config(image_gen)
+            ensure_comfyui_reachable(url, logger)
+        except Exception as exc:
+            logger.error("Image generation preflight failed: %s", exc)
+            raise SystemExit(1) from exc
 
     processed = 0
     success = 0

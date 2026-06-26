@@ -3,14 +3,17 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
+import requests
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -181,6 +184,82 @@ def resolve_output_path(value: str) -> Path:
     return path
 
 
+def is_comfyui_reachable(comfyui_url: str, timeout_sec: int = 5) -> bool:
+    try:
+        response = requests.get(f"{comfyui_url.rstrip('/')}/system_stats", timeout=timeout_sec)
+        return response.status_code < 400
+    except Exception:
+        return False
+
+
+def read_tail(path: Path, max_lines: int = 80) -> str:
+    if not path.exists():
+        return ""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return "\n".join(lines[-max_lines:])
+
+
+def start_comfyui_if_needed(comfyui_url: str, logger: logging.Logger) -> list[str]:
+    errors: list[str] = []
+    comfyui_url = comfyui_url.rstrip("/")
+    if is_comfyui_reachable(comfyui_url):
+        logger.info("ComfyUI reachable: %s", comfyui_url)
+        return errors
+
+    auto_start = os.environ.get("AUTO_START_COMFYUI", "1").strip().lower()
+    if auto_start in {"0", "false", "no", "off"}:
+        return [f"ComfyUI is not reachable: {comfyui_url}. AUTO_START_COMFYUI is disabled."]
+
+    comfyui_dir = Path(os.environ.get("COMFYUI_DIR", "/workspace/ComfyUI"))
+    main_py = comfyui_dir / "main.py"
+    if not main_py.exists():
+        return [
+            f"ComfyUI is not reachable: {comfyui_url}. COMFYUI_DIR does not contain main.py: {comfyui_dir}"
+        ]
+
+    port_match = re.search(r":(\d+)(?:/)?$", comfyui_url)
+    port = port_match.group(1) if port_match else "8188"
+    python_bin = shutil.which("python3") or sys.executable
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    (ROOT / "temp").mkdir(parents=True, exist_ok=True)
+    log_path = LOG_DIR / "comfyui.log"
+    pid_path = ROOT / "temp" / "comfyui.pid"
+
+    logger.info("ComfyUI is not reachable; starting it from %s", comfyui_dir)
+    command = [python_bin, "main.py", "--listen", "0.0.0.0", "--port", port]
+    with log_path.open("ab") as log_file:
+        process = subprocess.Popen(
+            command,
+            cwd=comfyui_dir,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    pid_path.write_text(str(process.pid), encoding="utf-8")
+    logger.info("Started ComfyUI pid=%s log=%s", process.pid, log_path)
+
+    timeout_sec = int(os.environ.get("COMFYUI_START_TIMEOUT", "180"))
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        if process.poll() is not None:
+            tail = read_tail(log_path)
+            errors.append(
+                f"ComfyUI exited early with code {process.returncode}. Log: {log_path}\n{tail}"
+            )
+            return errors
+        if is_comfyui_reachable(comfyui_url):
+            logger.info("ComfyUI is ready: %s", comfyui_url)
+            return errors
+        time.sleep(2)
+
+    tail = read_tail(log_path)
+    errors.append(
+        f"ComfyUI did not become reachable within {timeout_sec}s: {comfyui_url}. "
+        f"Log: {log_path}\n{tail}"
+    )
+    return errors
+
+
 def create_placeholder_image(path: Path, label: str, logger: logging.Logger) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -272,6 +351,8 @@ def validate_real_generation_config(project_config: dict, logger: logging.Logger
 
     if not comfyui_url or "${" in comfyui_url:
         errors.append("COMFYUI_URL is not configured; cannot generate FLUX/SDXL keyframes.")
+    else:
+        errors.extend(start_comfyui_if_needed(comfyui_url, logger))
     if not workflow_path.exists():
         errors.append(f"ComfyUI API workflow does not exist: {workflow_path}")
     if not hunyuan_root or not hunyuan_root.exists():
