@@ -199,6 +199,37 @@ def read_tail(path: Path, max_lines: int = 80) -> str:
     return "\n".join(lines[-max_lines:])
 
 
+def ensure_comfyui_runtime_deps(comfyui_dir: Path, logger: logging.Logger) -> list[str]:
+    auto_install = os.environ.get("AUTO_INSTALL_COMFYUI_DEPS", "1").strip().lower()
+    if auto_install in {"0", "false", "no", "off"}:
+        return []
+
+    python_bin = shutil.which("python3") or sys.executable
+    probe = subprocess.run(
+        [python_bin, "-c", "import sqlalchemy"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if probe.returncode == 0:
+        return []
+
+    requirements_path = comfyui_dir / "requirements.txt"
+    extra_packages = os.environ.get("COMFYUI_EXTRA_PIP_PACKAGES", "SQLAlchemy alembic").split()
+    command = [python_bin, "-m", "pip", "install"]
+    if requirements_path.exists():
+        command.extend(["-r", str(requirements_path)])
+    command.extend(extra_packages)
+    logger.info("Installing missing ComfyUI runtime dependencies: %s", " ".join(command))
+    result = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False)
+    output = "\n".join(part for part in [result.stdout, result.stderr] if part)
+    if output:
+        logger.info("ComfyUI dependency install output:\n%s", output[-12000:])
+    if result.returncode != 0:
+        return [f"Failed to install ComfyUI dependencies exit={result.returncode}:\n{output[-4000:]}"]
+    return []
+
+
 def start_comfyui_if_needed(comfyui_url: str, logger: logging.Logger) -> list[str]:
     errors: list[str] = []
     comfyui_url = comfyui_url.rstrip("/")
@@ -216,6 +247,10 @@ def start_comfyui_if_needed(comfyui_url: str, logger: logging.Logger) -> list[st
         return [
             f"ComfyUI is not reachable: {comfyui_url}. COMFYUI_DIR does not contain main.py: {comfyui_dir}"
         ]
+
+    errors.extend(ensure_comfyui_runtime_deps(comfyui_dir, logger))
+    if errors:
+        return errors
 
     port_match = re.search(r":(\d+)(?:/)?$", comfyui_url)
     port = port_match.group(1) if port_match else "8188"

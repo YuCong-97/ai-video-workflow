@@ -444,6 +444,7 @@ start_comfyui_background() {
   local comfy_url="${COMFYUI_URL:-http://127.0.0.1:8188}"
   local comfy_port="8188"
   local log_path="$PROJECT_DIR/logs/comfyui.log"
+  local extra_packages="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic}"
 
   if [[ "$comfy_url" =~ :([0-9]+)$ ]]; then
     comfy_port="${BASH_REMATCH[1]}"
@@ -460,6 +461,21 @@ start_comfyui_background() {
   fi
 
   mkdir -p logs temp
+  if [[ "${AUTO_INSTALL_COMFYUI_DEPS:-1}" != "0" ]]; then
+    if ! python3 - <<'PY' >/dev/null 2>&1
+import sqlalchemy  # noqa: F401
+PY
+    then
+      echo "Installing missing ComfyUI runtime dependencies..."
+      if [[ -f "$comfy_dir/requirements.txt" ]]; then
+        python3 -m pip install -r "$comfy_dir/requirements.txt"
+      fi
+      if [[ -n "$extra_packages" ]]; then
+        python3 -m pip install $extra_packages
+      fi
+    fi
+  fi
+
   echo "Starting ComfyUI in background: $comfy_url"
   (
     cd "$comfy_dir"

@@ -4,6 +4,7 @@ set -Eeuo pipefail
 COMFYUI_DIR="${COMFYUI_DIR:-/workspace/ComfyUI}"
 COMFYUI_REPO_URL="${COMFYUI_REPO_URL:-https://github.com/comfyanonymous/ComfyUI.git}"
 COMFYUI_MANAGER_REPO_URL="${COMFYUI_MANAGER_REPO_URL:-https://github.com/ltdrdata/ComfyUI-Manager.git}"
+COMFYUI_EXTRA_PIP_PACKAGES="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic}"
 WORKFLOW_URL="${WORKFLOW_URL:-}"
 WORKFLOW_PATH="${WORKFLOW_PATH:-}"
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
@@ -27,7 +28,7 @@ Options:
   --update-code           Pull latest code when repositories already exist.
 
 Environment:
-  COMFYUI_DIR, COMFYUI_REPO_URL, COMFYUI_MANAGER_REPO_URL, WORKFLOW_URL, WORKFLOW_PATH
+  COMFYUI_DIR, COMFYUI_REPO_URL, COMFYUI_MANAGER_REPO_URL, COMFYUI_EXTRA_PIP_PACKAGES, WORKFLOW_URL, WORKFLOW_PATH
 EOF
 }
 
@@ -112,6 +113,10 @@ fi
 if [[ "$NO_INSTALL" -eq 0 ]]; then
   python3 -m pip install --upgrade pip
   python3 -m pip install -r "$COMFYUI_DIR/requirements.txt"
+  if [[ -n "$COMFYUI_EXTRA_PIP_PACKAGES" ]]; then
+    # Recent ComfyUI asset database code imports SQLAlchemy even when older requirements miss it.
+    python3 -m pip install $COMFYUI_EXTRA_PIP_PACKAGES
+  fi
 fi
 
 if [[ -n "$WORKFLOW_URL" ]]; then

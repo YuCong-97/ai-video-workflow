@@ -78,6 +78,12 @@ tail -n 80 logs/comfyui.log
 
 更新后的脚本会每 10 秒打印等待状态，并在超时后自动显示 ComfyUI 日志尾部。
 
+如果 `logs/comfyui.log` 出现 `ModuleNotFoundError: No module named 'sqlalchemy'`，说明 ComfyUI 依赖没有装全。当前脚本会自动补装 `SQLAlchemy alembic`；也可以手动执行：
+
+```bash
+python3 -m pip install SQLAlchemy alembic
+```
+
 如果 HunyuanVideo、权重或 ComfyUI workflow 不在默认位置，可以启动时直接传入：
 
 ```bash
