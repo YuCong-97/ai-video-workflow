@@ -204,6 +204,7 @@ else
   echo "Python is not installed or not available in PATH."
   exit 1
 fi
+SYSTEM_PYTHON_BIN="$PYTHON_BIN"
 
 ensure_dir() {
   mkdir -p "$1"
@@ -276,6 +277,14 @@ set +a
 
 if [[ -z "${HF_TOKEN:-}" && -n "$HF_TOKEN_MANUAL" ]]; then
   export HF_TOKEN="$HF_TOKEN_MANUAL"
+fi
+
+if [[ -z "${COMFYUI_PYTHON_BIN:-}" ]]; then
+  if [[ -x "/usr/bin/python3" ]]; then
+    export COMFYUI_PYTHON_BIN="/usr/bin/python3"
+  else
+    export COMFYUI_PYTHON_BIN="$SYSTEM_PYTHON_BIN"
+  fi
 fi
 
 if [[ "$SETUP_REAL_GEN" -eq 1 ]]; then
@@ -444,7 +453,18 @@ start_comfyui_background() {
   local comfy_url="${COMFYUI_URL:-http://127.0.0.1:8188}"
   local comfy_port="8188"
   local log_path="$PROJECT_DIR/logs/comfyui.log"
+  local comfy_python="${COMFYUI_PYTHON_BIN:-/usr/bin/python3}"
   local extra_packages="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic}"
+  local torch_packages="${COMFYUI_TORCH_PACKAGES:-torch torchvision torchaudio}"
+  local torch_index_url="${COMFYUI_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
+
+  if [[ ! -x "$comfy_python" ]]; then
+    comfy_python="$(command -v python3 || true)"
+  fi
+  if [[ -z "$comfy_python" ]]; then
+    echo "Cannot find Python for ComfyUI. Set COMFYUI_PYTHON_BIN."
+    return 1
+  fi
 
   if [[ "$comfy_url" =~ :([0-9]+)$ ]]; then
     comfy_port="${BASH_REMATCH[1]}"
@@ -462,16 +482,21 @@ start_comfyui_background() {
 
   mkdir -p logs temp
   if [[ "${AUTO_INSTALL_COMFYUI_DEPS:-1}" != "0" ]]; then
-    if ! python3 - <<'PY' >/dev/null 2>&1
+    if ! "$comfy_python" - <<'PY' >/dev/null 2>&1
 import sqlalchemy  # noqa: F401
+import torch
+torch.cuda.current_device()
 PY
     then
       echo "Installing missing ComfyUI runtime dependencies..."
       if [[ -f "$comfy_dir/requirements.txt" ]]; then
-        python3 -m pip install -r "$comfy_dir/requirements.txt"
+        "$comfy_python" -m pip install -r "$comfy_dir/requirements.txt"
+      fi
+      if [[ -n "$torch_packages" && -n "$torch_index_url" ]]; then
+        "$comfy_python" -m pip install --force-reinstall $torch_packages --index-url "$torch_index_url"
       fi
       if [[ -n "$extra_packages" ]]; then
-        python3 -m pip install $extra_packages
+        "$comfy_python" -m pip install $extra_packages
       fi
     fi
   fi
@@ -479,7 +504,7 @@ PY
   echo "Starting ComfyUI in background: $comfy_url"
   (
     cd "$comfy_dir"
-    nohup python3 main.py --listen 0.0.0.0 --port "$comfy_port" > "$log_path" 2>&1 &
+    nohup "$comfy_python" main.py --listen 0.0.0.0 --port "$comfy_port" > "$log_path" 2>&1 &
     echo $! > "$PROJECT_DIR/temp/comfyui.pid"
   )
   echo "ComfyUI log: $log_path"

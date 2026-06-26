@@ -204,9 +204,12 @@ def ensure_comfyui_runtime_deps(comfyui_dir: Path, logger: logging.Logger) -> li
     if auto_install in {"0", "false", "no", "off"}:
         return []
 
-    python_bin = shutil.which("python3") or sys.executable
+    python_bin = os.environ.get("COMFYUI_PYTHON_BIN")
+    if not python_bin:
+        python_bin = "/usr/bin/python3" if Path("/usr/bin/python3").exists() else shutil.which("python3")
+    python_bin = python_bin or sys.executable
     probe = subprocess.run(
-        [python_bin, "-c", "import sqlalchemy"],
+        [python_bin, "-c", "import sqlalchemy; import torch; torch.cuda.current_device()"],
         capture_output=True,
         text=True,
         check=False,
@@ -216,17 +219,25 @@ def ensure_comfyui_runtime_deps(comfyui_dir: Path, logger: logging.Logger) -> li
 
     requirements_path = comfyui_dir / "requirements.txt"
     extra_packages = os.environ.get("COMFYUI_EXTRA_PIP_PACKAGES", "SQLAlchemy alembic").split()
-    command = [python_bin, "-m", "pip", "install"]
+    torch_packages = os.environ.get("COMFYUI_TORCH_PACKAGES", "torch torchvision torchaudio").split()
+    torch_index_url = os.environ.get("COMFYUI_TORCH_INDEX_URL", "https://download.pytorch.org/whl/cu124")
+    commands: list[list[str]] = []
     if requirements_path.exists():
-        command.extend(["-r", str(requirements_path)])
-    command.extend(extra_packages)
-    logger.info("Installing missing ComfyUI runtime dependencies: %s", " ".join(command))
-    result = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False)
-    output = "\n".join(part for part in [result.stdout, result.stderr] if part)
-    if output:
-        logger.info("ComfyUI dependency install output:\n%s", output[-12000:])
-    if result.returncode != 0:
-        return [f"Failed to install ComfyUI dependencies exit={result.returncode}:\n{output[-4000:]}"]
+        commands.append([python_bin, "-m", "pip", "install", "-r", str(requirements_path)])
+    if torch_packages and torch_index_url:
+        commands.append(
+            [python_bin, "-m", "pip", "install", "--force-reinstall", *torch_packages, "--index-url", torch_index_url]
+        )
+    if extra_packages:
+        commands.append([python_bin, "-m", "pip", "install", *extra_packages])
+    for command in commands:
+        logger.info("Installing missing ComfyUI runtime dependencies: %s", " ".join(command))
+        result = subprocess.run(command, capture_output=True, text=True, timeout=1800, check=False)
+        output = "\n".join(part for part in [result.stdout, result.stderr] if part)
+        if output:
+            logger.info("ComfyUI dependency install output:\n%s", output[-12000:])
+        if result.returncode != 0:
+            return [f"Failed to install ComfyUI dependencies exit={result.returncode}:\n{output[-4000:]}"]
     return []
 
 
@@ -254,7 +265,10 @@ def start_comfyui_if_needed(comfyui_url: str, logger: logging.Logger) -> list[st
 
     port_match = re.search(r":(\d+)(?:/)?$", comfyui_url)
     port = port_match.group(1) if port_match else "8188"
-    python_bin = shutil.which("python3") or sys.executable
+    python_bin = os.environ.get("COMFYUI_PYTHON_BIN")
+    if not python_bin:
+        python_bin = "/usr/bin/python3" if Path("/usr/bin/python3").exists() else shutil.which("python3")
+    python_bin = python_bin or sys.executable
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     (ROOT / "temp").mkdir(parents=True, exist_ok=True)
     log_path = LOG_DIR / "comfyui.log"

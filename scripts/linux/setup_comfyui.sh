@@ -5,6 +5,9 @@ COMFYUI_DIR="${COMFYUI_DIR:-/workspace/ComfyUI}"
 COMFYUI_REPO_URL="${COMFYUI_REPO_URL:-https://github.com/comfyanonymous/ComfyUI.git}"
 COMFYUI_MANAGER_REPO_URL="${COMFYUI_MANAGER_REPO_URL:-https://github.com/ltdrdata/ComfyUI-Manager.git}"
 COMFYUI_EXTRA_PIP_PACKAGES="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic}"
+COMFYUI_PYTHON_BIN="${COMFYUI_PYTHON_BIN:-python3}"
+COMFYUI_TORCH_PACKAGES="${COMFYUI_TORCH_PACKAGES:-torch torchvision torchaudio}"
+COMFYUI_TORCH_INDEX_URL="${COMFYUI_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
 WORKFLOW_URL="${WORKFLOW_URL:-}"
 WORKFLOW_PATH="${WORKFLOW_PATH:-}"
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
@@ -28,7 +31,8 @@ Options:
   --update-code           Pull latest code when repositories already exist.
 
 Environment:
-  COMFYUI_DIR, COMFYUI_REPO_URL, COMFYUI_MANAGER_REPO_URL, COMFYUI_EXTRA_PIP_PACKAGES, WORKFLOW_URL, WORKFLOW_PATH
+  COMFYUI_DIR, COMFYUI_REPO_URL, COMFYUI_MANAGER_REPO_URL, COMFYUI_EXTRA_PIP_PACKAGES,
+  COMFYUI_PYTHON_BIN, COMFYUI_TORCH_PACKAGES, COMFYUI_TORCH_INDEX_URL, WORKFLOW_URL, WORKFLOW_PATH
 EOF
 }
 
@@ -82,7 +86,14 @@ need_cmd() {
 }
 
 need_cmd git
-need_cmd python3
+need_cmd "$COMFYUI_PYTHON_BIN"
+
+comfyui_torch_ok() {
+  "$COMFYUI_PYTHON_BIN" - <<'PY' >/dev/null 2>&1
+import torch
+torch.cuda.current_device()
+PY
+}
 
 mkdir -p "$(dirname "$TARGET_WORKFLOW")"
 
@@ -111,11 +122,19 @@ if [[ "$NO_MANAGER" -eq 0 ]]; then
 fi
 
 if [[ "$NO_INSTALL" -eq 0 ]]; then
-  python3 -m pip install --upgrade pip
-  python3 -m pip install -r "$COMFYUI_DIR/requirements.txt"
+  "$COMFYUI_PYTHON_BIN" -m pip install --upgrade pip
+  "$COMFYUI_PYTHON_BIN" -m pip install -r "$COMFYUI_DIR/requirements.txt"
+  if [[ -n "$COMFYUI_TORCH_PACKAGES" && -n "$COMFYUI_TORCH_INDEX_URL" ]]; then
+    if comfyui_torch_ok; then
+      echo "ComfyUI torch CUDA check passed, skipping torch reinstall."
+    else
+      # Match RunPod images with NVIDIA driver 12.4; newer CUDA wheels can fail at torch.cuda init.
+      "$COMFYUI_PYTHON_BIN" -m pip install --force-reinstall $COMFYUI_TORCH_PACKAGES --index-url "$COMFYUI_TORCH_INDEX_URL"
+    fi
+  fi
   if [[ -n "$COMFYUI_EXTRA_PIP_PACKAGES" ]]; then
     # Recent ComfyUI asset database code imports SQLAlchemy even when older requirements miss it.
-    python3 -m pip install $COMFYUI_EXTRA_PIP_PACKAGES
+    "$COMFYUI_PYTHON_BIN" -m pip install $COMFYUI_EXTRA_PIP_PACKAGES
   fi
 fi
 
@@ -157,4 +176,4 @@ echo "  COMFYUI_DIR=$COMFYUI_DIR"
 echo "  Workflow=$TARGET_WORKFLOW"
 echo ""
 echo "Start ComfyUI:"
-echo "  cd $COMFYUI_DIR && python3 main.py --listen 0.0.0.0 --port 8188"
+echo "  cd $COMFYUI_DIR && $COMFYUI_PYTHON_BIN main.py --listen 0.0.0.0 --port 8188"

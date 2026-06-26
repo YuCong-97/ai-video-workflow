@@ -84,6 +84,14 @@ tail -n 80 logs/comfyui.log
 python3 -m pip install SQLAlchemy alembic
 ```
 
+如果 ComfyUI 报 `The NVIDIA driver on your system is too old (found version 12040)`，说明当前 PyTorch wheel 的 CUDA 版本高于 RunPod 容器驱动。当前脚本默认用系统 Python `/usr/bin/python3` 启动 ComfyUI，并在 torch CUDA 初始化失败时安装 CUDA 12.4 对应 wheel：
+
+```bash
+/usr/bin/python3 -m pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+```
+
+如果你的 RunPod 镜像驱动不是 CUDA 12.4，可在 `.env` 里覆盖 `COMFYUI_TORCH_INDEX_URL`。
+
 如果 HunyuanVideo、权重或 ComfyUI workflow 不在默认位置，可以启动时直接传入：
 
 ```bash
