@@ -15,6 +15,8 @@ HF_TOKEN="${HF_TOKEN:-$HF_TOKEN_MANUAL}"
 
 NO_MODEL=0
 NO_INSTALL=0
+UPDATE_CODE=0
+FORCE_MODEL_DOWNLOAD=0
 
 usage() {
   cat <<'EOF'
@@ -28,6 +30,8 @@ Options:
   --model-repo HF_ID      Hugging Face model repo. Default: tencent/HunyuanVideo-I2V
   --no-model              Clone/install code only; skip model download.
   --no-install            Clone/download only; skip pip install.
+  --update-code           Pull latest code when repository already exists.
+  --force-model-download  Run Hugging Face download even if model files exist.
 
 Environment:
   HUNYUAN_ROOT, HUNYUAN_CKPT, HUNYUAN_REPO_URL, HUNYUAN_MODEL_REPO, HF_TOKEN
@@ -63,6 +67,14 @@ while [[ $# -gt 0 ]]; do
       NO_INSTALL=1
       shift
       ;;
+    --update-code)
+      UPDATE_CODE=1
+      shift
+      ;;
+    --force-model-download)
+      FORCE_MODEL_DOWNLOAD=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -84,6 +96,16 @@ need_cmd() {
 
 need_cmd git
 need_cmd python3
+
+has_model_files() {
+  local path="$1"
+  [[ -d "$path" ]] || return 1
+  find "$path" -type f \
+    \( -name '*.safetensors' -o -name '*.pt' -o -name '*.pth' -o -name '*.bin' -o -name '*.gguf' -o -name '*.model' \) \
+    -size +10M \
+    ! -path '*/.cache/*' \
+    | grep -q .
+}
 
 install_hunyuan_requirements() {
   local requirements_path="$HUNYUAN_ROOT/requirements.txt"
@@ -127,7 +149,11 @@ if [[ ! -d "$HUNYUAN_ROOT/.git" ]]; then
   mkdir -p "$(dirname "$HUNYUAN_ROOT")"
   git clone "$HUNYUAN_REPO_URL" "$HUNYUAN_ROOT"
 else
-  git -C "$HUNYUAN_ROOT" pull --ff-only || true
+  if [[ "$UPDATE_CODE" -eq 1 ]]; then
+    git -C "$HUNYUAN_ROOT" pull --ff-only || true
+  else
+    echo "HunyuanVideo already exists, skipping git pull: $HUNYUAN_ROOT"
+  fi
 fi
 
 if [[ "$NO_INSTALL" -eq 0 ]]; then
@@ -138,17 +164,21 @@ fi
 
 if [[ "$NO_MODEL" -eq 0 ]]; then
   mkdir -p "$HUNYUAN_CKPT"
-  export HF_HUB_ENABLE_HF_TRANSFER=1
-  hf_args=(download "$HUNYUAN_MODEL_REPO" --local-dir "$HUNYUAN_CKPT")
-  if [[ -n "$HF_TOKEN" ]]; then
-    hf_args+=(--token "$HF_TOKEN")
-  fi
-  if command -v hf >/dev/null 2>&1; then
-    hf "${hf_args[@]}"
-  elif command -v huggingface-cli >/dev/null 2>&1; then
-    huggingface-cli "${hf_args[@]}"
+  if [[ "$FORCE_MODEL_DOWNLOAD" -eq 0 ]] && has_model_files "$HUNYUAN_CKPT"; then
+    echo "Hunyuan model files already exist, skipping model download: $HUNYUAN_CKPT"
+    echo "Use --force-model-download to force Hugging Face download/resume."
   else
-    python3 - "$HUNYUAN_MODEL_REPO" "$HUNYUAN_CKPT" "$HF_TOKEN" <<'PY'
+    export HF_HUB_ENABLE_HF_TRANSFER=1
+    hf_args=(download "$HUNYUAN_MODEL_REPO" --local-dir "$HUNYUAN_CKPT")
+    if [[ -n "$HF_TOKEN" ]]; then
+      hf_args+=(--token "$HF_TOKEN")
+    fi
+    if command -v hf >/dev/null 2>&1; then
+      hf "${hf_args[@]}"
+    elif command -v huggingface-cli >/dev/null 2>&1; then
+      huggingface-cli "${hf_args[@]}"
+    else
+      python3 - "$HUNYUAN_MODEL_REPO" "$HUNYUAN_CKPT" "$HF_TOKEN" <<'PY'
 from huggingface_hub import snapshot_download
 import sys
 
@@ -157,6 +187,7 @@ local_dir = sys.argv[2]
 token = sys.argv[3] or None
 snapshot_download(repo_id=repo_id, local_dir=local_dir, token=token)
 PY
+    fi
   fi
 fi
 

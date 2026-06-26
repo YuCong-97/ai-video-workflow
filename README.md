@@ -54,9 +54,19 @@ chmod +x start_visual.sh scripts/linux/*.sh
   --port 7860
 ```
 
-`--runpod-full` 会安装 Ubuntu/RunPod 常见系统依赖、Python 依赖、ComfyUI、ComfyUI-Manager、HunyuanVideo-I2V、Hunyuan 模型权重，并后台启动 ComfyUI 后再启动本项目 Web 页面。ComfyUI 的 FLUX/SDXL 具体模型和 workflow 强相关，如果你的 workflow 需要私有或授权模型，请先通过环境变量、Volume 或手动下载放到 ComfyUI 对应模型目录。
+`--runpod-full` 会安装 Ubuntu/RunPod 常见系统依赖、Python 依赖、ComfyUI、ComfyUI-Manager、HunyuanVideo-I2V、Hunyuan 模型权重，并后台启动 ComfyUI 后再启动本项目 Web 页面。重复运行同一条命令时，已有 ComfyUI/Hunyuan 代码目录默认不会 `git pull`，已有 Hunyuan 权重文件默认不会重复下载。ComfyUI 的 FLUX/SDXL 具体模型和 workflow 强相关，如果你的 workflow 需要私有或授权模型，请先通过环境变量、Volume 或手动下载放到 ComfyUI 对应模型目录。
 
-如果 Hugging Face 模型需要授权，直接打开 `start_visual.sh`，把顶部的 `HF_TOKEN_MANUAL=""` 改成你的 token，例如 `HF_TOKEN_MANUAL="hf_xxx"`，然后再运行 `./start_visual.sh --runpod-full --port 7860`。
+如果 Hugging Face 模型需要授权，推荐写入本地 `.env`，不要提交到 git：
+
+```bash
+echo 'HF_TOKEN=hf_xxx' >> .env
+```
+
+需要主动更新 ComfyUI/Hunyuan 代码时加 `--update-code`。如果上次模型下载不完整，需要强制重新下载或续传时加 `--force-model-download`：
+
+```bash
+./start_visual.sh --runpod-full --workflow /workspace/workflows/comfyui_workflow_api.json --port 7860 --force-model-download
+```
 
 如果安装 Hunyuan 依赖时报 `tokenizers==0.15.0` 和 `transformers==4.48.0` 冲突，当前 `scripts/linux/setup_hunyuan_i2v.sh` 会自动生成临时兼容版 requirements，跳过旧的 `tokenizers==0.15.0` 固定版本，让 `transformers` 安装匹配的 `tokenizers>=0.21,<0.22`。
 

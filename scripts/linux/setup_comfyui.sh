@@ -10,6 +10,7 @@ PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TARGET_WORKFLOW="${TARGET_WORKFLOW:-$PROJECT_DIR/input/config/comfyui_workflow_api.json}"
 NO_MANAGER=0
 NO_INSTALL=0
+UPDATE_CODE=0
 
 usage() {
   cat <<'EOF'
@@ -23,6 +24,7 @@ Options:
   --target PATH           Target workflow path. Default: input/config/comfyui_workflow_api.json
   --no-manager            Do not install ComfyUI-Manager.
   --no-install            Clone/copy only; skip pip install.
+  --update-code           Pull latest code when repositories already exist.
 
 Environment:
   COMFYUI_DIR, COMFYUI_REPO_URL, COMFYUI_MANAGER_REPO_URL, WORKFLOW_URL, WORKFLOW_PATH
@@ -55,6 +57,10 @@ while [[ $# -gt 0 ]]; do
       NO_INSTALL=1
       shift
       ;;
+    --update-code)
+      UPDATE_CODE=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -83,7 +89,11 @@ if [[ ! -d "$COMFYUI_DIR/.git" ]]; then
   mkdir -p "$(dirname "$COMFYUI_DIR")"
   git clone "$COMFYUI_REPO_URL" "$COMFYUI_DIR"
 else
-  git -C "$COMFYUI_DIR" pull --ff-only || true
+  if [[ "$UPDATE_CODE" -eq 1 ]]; then
+    git -C "$COMFYUI_DIR" pull --ff-only || true
+  else
+    echo "ComfyUI already exists, skipping git pull: $COMFYUI_DIR"
+  fi
 fi
 
 if [[ "$NO_MANAGER" -eq 0 ]]; then
@@ -91,7 +101,11 @@ if [[ "$NO_MANAGER" -eq 0 ]]; then
   if [[ ! -d "$manager_dir/.git" ]]; then
     git clone "$COMFYUI_MANAGER_REPO_URL" "$manager_dir"
   else
-    git -C "$manager_dir" pull --ff-only || true
+    if [[ "$UPDATE_CODE" -eq 1 ]]; then
+      git -C "$manager_dir" pull --ff-only || true
+    else
+      echo "ComfyUI-Manager already exists, skipping git pull: $manager_dir"
+    fi
   fi
 fi
 
@@ -139,4 +153,3 @@ echo "  Workflow=$TARGET_WORKFLOW"
 echo ""
 echo "Start ComfyUI:"
 echo "  cd $COMFYUI_DIR && python3 main.py --listen 0.0.0.0 --port 8188"
-

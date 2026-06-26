@@ -13,6 +13,8 @@ HUNYUAN_REPO_URL="${HUNYUAN_REPO_URL:-}"
 HUNYUAN_MODEL_REPO="${HUNYUAN_MODEL_REPO:-}"
 WORKFLOW_ARG=""
 NO_MODEL=0
+UPDATE_CODE=0
+FORCE_MODEL_DOWNLOAD=0
 
 usage() {
   cat <<'EOF'
@@ -28,6 +30,8 @@ Options:
   --hunyuan-repo URL      HunyuanVideo git repository URL.
   --hunyuan-model-repo ID Hugging Face model repo ID.
   --no-model              Skip model download.
+  --update-code           Pull latest code when repositories already exist.
+  --force-model-download  Run model download even if model files exist.
 
 This prepares ComfyUI + HunyuanVideo-I2V and updates .env for start_visual.sh.
 EOF
@@ -68,6 +72,14 @@ while [[ $# -gt 0 ]]; do
       NO_MODEL=1
       shift
       ;;
+    --update-code)
+      UPDATE_CODE=1
+      shift
+      ;;
+    --force-model-download)
+      FORCE_MODEL_DOWNLOAD=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -83,6 +95,9 @@ done
 cd "$PROJECT_DIR"
 
 comfy_args=(--dir "$COMFYUI_DIR" --target "$PROJECT_DIR/input/config/comfyui_workflow_api.json")
+if [[ "$UPDATE_CODE" -eq 1 ]]; then
+  comfy_args+=(--update-code)
+fi
 if [[ -n "$WORKFLOW_ARG" ]]; then
   comfy_args+=(--workflow "$WORKFLOW_ARG")
 fi
@@ -100,6 +115,12 @@ if [[ -n "$HUNYUAN_MODEL_REPO" ]]; then
 fi
 if [[ "$NO_MODEL" -eq 1 ]]; then
   hunyuan_args+=(--no-model)
+fi
+if [[ "$UPDATE_CODE" -eq 1 ]]; then
+  hunyuan_args+=(--update-code)
+fi
+if [[ "$FORCE_MODEL_DOWNLOAD" -eq 1 ]]; then
+  hunyuan_args+=(--force-model-download)
 fi
 bash "$SCRIPT_DIR/setup_hunyuan_i2v.sh" "${hunyuan_args[@]}"
 

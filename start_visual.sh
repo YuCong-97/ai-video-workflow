@@ -8,7 +8,7 @@ PORT="${APP_PORT:-7860}"
 # Fill it manually if needed, for example:
 # HF_TOKEN_MANUAL="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 # An existing environment variable HF_TOKEN still has priority.
-HF_TOKEN_MANUAL="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"
+HF_TOKEN_MANUAL=""
 
 NO_INSTALL=0
 NO_VENV=0
@@ -26,6 +26,8 @@ COMFYUI_DIR_ARG=""
 WORKFLOW_URL_ARG=""
 HUNYUAN_MODEL_REPO_ARG=""
 HUNYUAN_REPO_ARG=""
+UPDATE_CODE=0
+FORCE_MODEL_DOWNLOAD=0
 
 usage() {
   cat <<'EOF'
@@ -39,6 +41,7 @@ Usage:
                     [--workflow-url https://example.com/workflow.json]
                     [--setup-real-gen] [--runpod-full] [--install-system]
                     [--start-comfyui] [--no-model]
+                    [--update-code] [--force-model-download]
                     [--check-only]
 
 Examples:
@@ -126,6 +129,14 @@ while [[ $# -gt 0 ]]; do
     --hunyuan-model-repo)
       HUNYUAN_MODEL_REPO_ARG="${2:?Missing value for --hunyuan-model-repo}"
       shift 2
+      ;;
+    --update-code)
+      UPDATE_CODE=1
+      shift
+      ;;
+    --force-model-download)
+      FORCE_MODEL_DOWNLOAD=1
+      shift
       ;;
     --no-model)
       NO_MODEL=1
@@ -284,6 +295,12 @@ if [[ "$SETUP_REAL_GEN" -eq 1 ]]; then
   fi
   if [[ -n "$HUNYUAN_MODEL_REPO_ARG" ]]; then
     setup_args+=(--hunyuan-model-repo "$HUNYUAN_MODEL_REPO_ARG")
+  fi
+  if [[ "$UPDATE_CODE" -eq 1 ]]; then
+    setup_args+=(--update-code)
+  fi
+  if [[ "$FORCE_MODEL_DOWNLOAD" -eq 1 ]]; then
+    setup_args+=(--force-model-download)
   fi
   if [[ "$NO_MODEL" -eq 1 ]]; then
     setup_args+=(--no-model)
