@@ -426,6 +426,7 @@ start_comfyui_background() {
   local comfy_dir="${COMFYUI_DIR:-/workspace/ComfyUI}"
   local comfy_url="${COMFYUI_URL:-http://127.0.0.1:8188}"
   local comfy_port="8188"
+  local log_path="$PROJECT_DIR/logs/comfyui.log"
 
   if [[ "$comfy_url" =~ :([0-9]+)$ ]]; then
     comfy_port="${BASH_REMATCH[1]}"
@@ -436,31 +437,40 @@ start_comfyui_background() {
     return 1
   fi
 
-  if command -v curl >/dev/null 2>&1 && curl -fsS "$comfy_url/system_stats" >/dev/null 2>&1; then
+  if command -v curl >/dev/null 2>&1 && curl --max-time 5 -fsS "$comfy_url/system_stats" >/dev/null 2>&1; then
     echo "ComfyUI already running: $comfy_url"
     return 0
   fi
 
-  mkdir -p logs
+  mkdir -p logs temp
   echo "Starting ComfyUI in background: $comfy_url"
   (
     cd "$comfy_dir"
-    nohup python3 main.py --listen 0.0.0.0 --port "$comfy_port" > "$PROJECT_DIR/logs/comfyui.log" 2>&1 &
+    nohup python3 main.py --listen 0.0.0.0 --port "$comfy_port" > "$log_path" 2>&1 &
     echo $! > "$PROJECT_DIR/temp/comfyui.pid"
   )
+  echo "ComfyUI log: $log_path"
 
   if command -v curl >/dev/null 2>&1; then
-    for _ in $(seq 1 60); do
-      if curl -fsS "$comfy_url/system_stats" >/dev/null 2>&1; then
+    for attempt in $(seq 1 60); do
+      if curl --max-time 5 -fsS "$comfy_url/system_stats" >/dev/null 2>&1; then
         echo "ComfyUI is ready: $comfy_url"
         return 0
+      fi
+      if (( attempt % 5 == 0 )); then
+        echo "Waiting for ComfyUI... $((attempt * 2))s elapsed"
       fi
       sleep 2
     done
   fi
 
   echo "ComfyUI startup was requested, but readiness check did not pass yet."
-  echo "Log: logs/comfyui.log"
+  echo "Log: $log_path"
+  if [[ -f "$log_path" ]]; then
+    echo ""
+    echo "Last 80 ComfyUI log lines:"
+    tail -n 80 "$log_path" || true
+  fi
   return 0
 }
 

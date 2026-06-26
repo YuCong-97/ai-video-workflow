@@ -60,6 +60,14 @@ chmod +x start_visual.sh scripts/linux/*.sh
 
 如果安装 Hunyuan 依赖时报 `tokenizers==0.15.0` 和 `transformers==4.48.0` 冲突，当前 `scripts/linux/setup_hunyuan_i2v.sh` 会自动生成临时兼容版 requirements，跳过旧的 `tokenizers==0.15.0` 固定版本，让 `transformers` 安装匹配的 `tokenizers>=0.21,<0.22`。
 
+如果启动停在 `Starting ComfyUI in background`，通常是在等 ComfyUI 首次加载。可以另开一个终端查看日志：
+
+```bash
+tail -n 80 logs/comfyui.log
+```
+
+更新后的脚本会每 10 秒打印等待状态，并在超时后自动显示 ComfyUI 日志尾部。
+
 如果 HunyuanVideo、权重或 ComfyUI workflow 不在默认位置，可以启动时直接传入：
 
 ```bash
