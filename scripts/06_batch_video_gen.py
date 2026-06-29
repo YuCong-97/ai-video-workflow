@@ -161,7 +161,9 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
         return
 
     python_bin = str(video_gen.get("python_bin", "python3"))
-    required_modules = shlex.split(str(video_gen.get("required_modules", "loguru imageio diffusers deepspeed") or ""))
+    required_modules = shlex.split(
+        str(video_gen.get("required_modules", "loguru imageio diffusers deepspeed tensorboard") or "")
+    )
     requirements = hunyuan_root / "requirements.txt"
     missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
     if requirements.exists() and missing:
