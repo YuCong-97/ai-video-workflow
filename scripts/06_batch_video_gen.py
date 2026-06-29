@@ -114,6 +114,8 @@ def default_hunyuan_command_template() -> str:
         "cd {hunyuan_root:q} && python3 sample_image2video.py "
         "--model HYVideo-T/2 "
         "--model-base {hunyuan_ckpt:q} "
+        "--dit-weight {dit_weight:q} "
+        "--i2v-dit-weight {i2v_dit_weight:q} "
         "--prompt {prompt:q} "
         "--i2v-mode "
         "--i2v-image-path {image:q} "
@@ -290,6 +292,8 @@ def build_command(row: dict[str, str], video_gen: dict[str, Any], save_dir: Path
         "fps": video_gen.get("fps", 24),
         "hunyuan_root": hunyuan_root,
         "hunyuan_ckpt": hunyuan_ckpt,
+        "dit_weight": hunyuan_ckpt / "hunyuan-video-t2v-720p" / "transformers" / "mp_rank_00_model_states.pt",
+        "i2v_dit_weight": hunyuan_ckpt / "hunyuan-video-i2v-720p" / "transformers" / "mp_rank_00_model_states.pt",
         "model_dir": video_gen.get("model_dir", ""),
         "resolution": video_gen.get("resolution", "720p"),
         "infer_steps": video_gen.get("infer_steps", 50),

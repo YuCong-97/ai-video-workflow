@@ -45,6 +45,8 @@ video_gen:
     cd {hunyuan_root:q} && python3 sample_image2video.py
     --model HYVideo-T/2
     --model-base {hunyuan_ckpt:q}
+    --dit-weight {dit_weight:q}
+    --i2v-dit-weight {i2v_dit_weight:q}
     --prompt {prompt:q}
     --i2v-mode
     --i2v-image-path {image:q}
