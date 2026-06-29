@@ -457,6 +457,7 @@ start_comfyui_background() {
   local extra_packages="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic}"
   local torch_packages="${COMFYUI_TORCH_PACKAGES:-torch torchvision torchaudio}"
   local torch_index_url="${COMFYUI_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
+  local numpy_package="${COMFYUI_NUMPY_PACKAGE:-numpy>=1.26,<3}"
 
   if [[ ! -x "$comfy_python" ]]; then
     comfy_python="$(command -v python3 || true)"
@@ -484,6 +485,7 @@ start_comfyui_background() {
   if [[ "${AUTO_INSTALL_COMFYUI_DEPS:-1}" != "0" ]]; then
     if ! "$comfy_python" - <<'PY' >/dev/null 2>&1
 import sqlalchemy  # noqa: F401
+import numpy.dtypes  # noqa: F401
 import torch
 torch.cuda.current_device()
 PY
@@ -491,6 +493,9 @@ PY
       echo "Installing missing ComfyUI runtime dependencies..."
       if [[ -f "$comfy_dir/requirements.txt" ]]; then
         "$comfy_python" -m pip install -r "$comfy_dir/requirements.txt"
+      fi
+      if [[ -n "$numpy_package" ]]; then
+        "$comfy_python" -m pip install --upgrade --force-reinstall "$numpy_package"
       fi
       if [[ -n "$torch_packages" && -n "$torch_index_url" ]]; then
         "$comfy_python" -m pip install --force-reinstall $torch_packages --index-url "$torch_index_url"

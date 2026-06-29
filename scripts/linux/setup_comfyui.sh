@@ -8,6 +8,7 @@ COMFYUI_EXTRA_PIP_PACKAGES="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic}"
 COMFYUI_PYTHON_BIN="${COMFYUI_PYTHON_BIN:-python3}"
 COMFYUI_TORCH_PACKAGES="${COMFYUI_TORCH_PACKAGES:-torch torchvision torchaudio}"
 COMFYUI_TORCH_INDEX_URL="${COMFYUI_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
+COMFYUI_NUMPY_PACKAGE="${COMFYUI_NUMPY_PACKAGE:-numpy>=1.26,<3}"
 WORKFLOW_URL="${WORKFLOW_URL:-}"
 WORKFLOW_PATH="${WORKFLOW_PATH:-}"
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
@@ -32,7 +33,8 @@ Options:
 
 Environment:
   COMFYUI_DIR, COMFYUI_REPO_URL, COMFYUI_MANAGER_REPO_URL, COMFYUI_EXTRA_PIP_PACKAGES,
-  COMFYUI_PYTHON_BIN, COMFYUI_TORCH_PACKAGES, COMFYUI_TORCH_INDEX_URL, WORKFLOW_URL, WORKFLOW_PATH
+  COMFYUI_PYTHON_BIN, COMFYUI_TORCH_PACKAGES, COMFYUI_TORCH_INDEX_URL, COMFYUI_NUMPY_PACKAGE,
+  WORKFLOW_URL, WORKFLOW_PATH
 EOF
 }
 
@@ -95,6 +97,12 @@ torch.cuda.current_device()
 PY
 }
 
+comfyui_numpy_ok() {
+  "$COMFYUI_PYTHON_BIN" - <<'PY' >/dev/null 2>&1
+import numpy.dtypes  # noqa: F401
+PY
+}
+
 mkdir -p "$(dirname "$TARGET_WORKFLOW")"
 
 if [[ ! -d "$COMFYUI_DIR/.git" ]]; then
@@ -124,6 +132,13 @@ fi
 if [[ "$NO_INSTALL" -eq 0 ]]; then
   "$COMFYUI_PYTHON_BIN" -m pip install --upgrade pip
   "$COMFYUI_PYTHON_BIN" -m pip install -r "$COMFYUI_DIR/requirements.txt"
+  if [[ -n "$COMFYUI_NUMPY_PACKAGE" ]]; then
+    if comfyui_numpy_ok; then
+      echo "ComfyUI numpy.dtypes check passed, skipping numpy reinstall."
+    else
+      "$COMFYUI_PYTHON_BIN" -m pip install --upgrade --force-reinstall "$COMFYUI_NUMPY_PACKAGE"
+    fi
+  fi
   if [[ -n "$COMFYUI_TORCH_PACKAGES" && -n "$COMFYUI_TORCH_INDEX_URL" ]]; then
     if comfyui_torch_ok; then
       echo "ComfyUI torch CUDA check passed, skipping torch reinstall."
