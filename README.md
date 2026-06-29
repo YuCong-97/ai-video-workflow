@@ -70,11 +70,13 @@ chmod +x start_visual.sh scripts/linux/*.sh
 ```bash
 zip -r aiVideoWorkFlow.zip aiVideoWorkFlow \
   -x "aiVideoWorkFlow/.git/*" \
+  -x "aiVideoWorkFlow/.env" \
   -x "aiVideoWorkFlow/.venv/*" \
   -x "aiVideoWorkFlow/models/*" \
   -x "aiVideoWorkFlow/outputs/*" \
   -x "aiVideoWorkFlow/logs/*" \
-  -x "aiVideoWorkFlow/temp/*"
+  -x "aiVideoWorkFlow/temp/*" \
+  -x "aiVideoWorkFlow/**/__pycache__/*"
 ```
 
 把 `aiVideoWorkFlow.zip` 上传到 RunPod 的 `/workspace` 后，在 Linux 主机上解压：
