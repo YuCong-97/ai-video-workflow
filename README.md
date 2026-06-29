@@ -434,6 +434,14 @@ input/config/comfyui_workflow_api.json
   --port 7860
 ```
 
+检查 I2V 权重是否在配置目录：
+
+```bash
+ls -lh /models/hunyuan/ckpts/hunyuan-video-i2v-720p/transformers/mp_rank_00_model_states.pt
+```
+
+如果你的权重在其他目录，把 `.env` 里的 `HUNYUAN_CKPT` 改成该目录；视频命令会通过 `--model-base` 传给 HunyuanVideo。
+
 ### 模型下载中断
 
 复用相同目录重新运行即可。需要强制下载或续传时：

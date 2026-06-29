@@ -112,6 +112,7 @@ def default_hunyuan_command_template() -> str:
     return (
         "cd {hunyuan_root:q} && python3 sample_image2video.py "
         "--model HYVideo-T/2 "
+        "--model-base {hunyuan_ckpt:q} "
         "--prompt {prompt:q} "
         "--i2v-mode "
         "--i2v-image-path {image:q} "
@@ -241,6 +242,15 @@ def generate_video(row: dict[str, str], video_gen: dict[str, Any], logger: loggi
     if not hunyuan_root.exists():
         raise FileNotFoundError(f"HUNYUAN_ROOT does not exist: {hunyuan_root}")
     ensure_hunyuan_runtime(hunyuan_root, video_gen, logger)
+    hunyuan_ckpt = Path(str(video_gen.get("hunyuan_ckpt", "")))
+    i2v_weight = hunyuan_ckpt / "hunyuan-video-i2v-720p" / "transformers" / "mp_rank_00_model_states.pt"
+    if "${" in str(hunyuan_ckpt) or not hunyuan_ckpt.exists():
+        raise FileNotFoundError(f"HUNYUAN_CKPT does not exist or is not configured: {hunyuan_ckpt}")
+    if not i2v_weight.exists():
+        raise FileNotFoundError(
+            f"Hunyuan I2V weight missing: {i2v_weight}. "
+            "Download the HunyuanVideo-I2V weights to HUNYUAN_CKPT or pass the correct --hunyuan-ckpt path."
+        )
 
     save_dir = ROOT / "temp" / "hunyuan" / output_video.stem
     save_dir.mkdir(parents=True, exist_ok=True)
