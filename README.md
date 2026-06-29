@@ -125,8 +125,8 @@ COMFYUI_URL=http://127.0.0.1:8188
 COMFYUI_DIR=/workspace/ComfyUI
 COMFYUI_PYTHON_BIN=/usr/bin/python3
 COMFYUI_TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
-COMFYUI_TORCH_PACKAGES=torch torchvision torchaudio
-COMFYUI_EXTRA_PIP_PACKAGES=SQLAlchemy alembic
+COMFYUI_TORCH_PACKAGES="torch torchvision torchaudio"
+COMFYUI_EXTRA_PIP_PACKAGES="SQLAlchemy alembic"
 
 MODEL_DIR=/models
 HUNYUAN_ROOT=/workspace/HunyuanVideo-I2V
