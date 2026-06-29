@@ -246,10 +246,38 @@ def ensure_hunyuan_i2v_weights(hunyuan_ckpt: Path, video_gen: dict[str, Any], lo
         raise FileNotFoundError(f"Hunyuan I2V download finished but expected weight is still missing: {i2v_weight}")
 
 
+def i2v_weight_path(hunyuan_ckpt: Path) -> Path:
+    return hunyuan_ckpt / "hunyuan-video-i2v-720p" / "transformers" / "mp_rank_00_model_states.pt"
+
+
+def detect_hunyuan_ckpt(configured: Path, hunyuan_root: Path, logger: logging.Logger) -> Path:
+    candidates = [
+        configured,
+        Path("/models/hunyuan/ckpts"),
+        Path("/models/hunyuan"),
+        Path("/workspace/models/hunyuan/ckpts"),
+        Path("/workspace/models/hunyuan"),
+        hunyuan_root / "ckpts",
+        Path("/workspace/HunyuanVideo-1.5/ckpts"),
+        Path("/workspace/HunyuanVideo-I2V/ckpts"),
+    ]
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if i2v_weight_path(candidate).exists():
+            if candidate != configured:
+                logger.info("Detected HUNYUAN_CKPT=%s with required I2V weight", candidate)
+            return candidate
+    return configured
+
+
 def build_command(row: dict[str, str], video_gen: dict[str, Any], save_dir: Path) -> str:
     image = resolve_path(row["output_image"])
     output = resolve_path(row["output_video"])
     hunyuan_root = Path(str(video_gen.get("hunyuan_root", "")))
+    hunyuan_ckpt = detect_hunyuan_ckpt(Path(str(video_gen.get("hunyuan_ckpt", ""))), hunyuan_root, logging.getLogger("batch_video_gen"))
     values = {
         "prompt": row.get("prompt", ""),
         "negative_prompt": row.get("negative_prompt", ""),
@@ -261,7 +289,7 @@ def build_command(row: dict[str, str], video_gen: dict[str, Any], save_dir: Path
         "duration": row.get("duration", video_gen.get("duration_sec", 4)),
         "fps": video_gen.get("fps", 24),
         "hunyuan_root": hunyuan_root,
-        "hunyuan_ckpt": video_gen.get("hunyuan_ckpt", ""),
+        "hunyuan_ckpt": hunyuan_ckpt,
         "model_dir": video_gen.get("model_dir", ""),
         "resolution": video_gen.get("resolution", "720p"),
         "infer_steps": video_gen.get("infer_steps", 50),
@@ -293,7 +321,7 @@ def generate_video(row: dict[str, str], video_gen: dict[str, Any], logger: loggi
     if not hunyuan_root.exists():
         raise FileNotFoundError(f"HUNYUAN_ROOT does not exist: {hunyuan_root}")
     ensure_hunyuan_runtime(hunyuan_root, video_gen, logger)
-    hunyuan_ckpt = Path(str(video_gen.get("hunyuan_ckpt", "")))
+    hunyuan_ckpt = detect_hunyuan_ckpt(Path(str(video_gen.get("hunyuan_ckpt", ""))), hunyuan_root, logger)
     if "${" in str(hunyuan_ckpt):
         raise FileNotFoundError(f"HUNYUAN_CKPT does not exist or is not configured: {hunyuan_ckpt}")
     if not hunyuan_ckpt.exists() and not config_bool(video_gen, "auto_download_weights", False):
