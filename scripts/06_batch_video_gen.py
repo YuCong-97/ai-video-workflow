@@ -161,11 +161,16 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
         return
 
     python_bin = str(video_gen.get("python_bin", "python3"))
-    required_modules = shlex.split(
-        str(video_gen.get("required_modules", "loguru imageio diffusers deepspeed tensorboard") or "")
-    )
+    default_required = "loguru imageio diffusers.models.autoencoders.autoencoder_kl deepspeed tensorboard"
+    required_modules = shlex.split(str(video_gen.get("required_modules", default_required) or ""))
     requirements = hunyuan_root / "requirements.txt"
     missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
+    force_packages = str(video_gen.get("force_pip_packages", "") or "").strip()
+    if force_packages and missing:
+        logger.info("Installing pinned Hunyuan packages because modules are incompatible or missing: %s", ", ".join(missing))
+        run_command([python_bin, "-m", "pip", "install", "--force-reinstall", *shlex.split(force_packages)], logger, cwd=hunyuan_root)
+        missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
+
     if requirements.exists() and missing:
         logger.info("Installing Hunyuan requirements because modules are missing: %s", ", ".join(missing))
         run_command([python_bin, "-m", "pip", "install", "-r", str(requirements)], logger, cwd=hunyuan_root)
