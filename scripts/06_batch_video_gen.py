@@ -275,6 +275,30 @@ def detect_hunyuan_ckpt(configured: Path, hunyuan_root: Path, logger: logging.Lo
     return configured
 
 
+def ensure_hunyuan_ckpt_symlink(hunyuan_root: Path, hunyuan_ckpt: Path, logger: logging.Logger) -> None:
+    link_path = hunyuan_root / "ckpts"
+    if link_path.is_symlink():
+        current_target = link_path.resolve()
+        if current_target != hunyuan_ckpt.resolve():
+            logger.info("Updating Hunyuan ckpts symlink: %s -> %s", link_path, hunyuan_ckpt)
+            link_path.unlink()
+            link_path.symlink_to(hunyuan_ckpt, target_is_directory=True)
+        return
+
+    if not link_path.exists():
+        logger.info("Creating Hunyuan ckpts symlink: %s -> %s", link_path, hunyuan_ckpt)
+        link_path.symlink_to(hunyuan_ckpt, target_is_directory=True)
+        return
+
+    if not i2v_weight_path(link_path).exists():
+        logger.warning(
+            "Hunyuan local ckpts directory exists but required I2V weight is not visible there: %s. "
+            "VAE loading may still fail if HunyuanVideo expects ./ckpts. Consider moving or linking it to %s.",
+            link_path,
+            hunyuan_ckpt,
+        )
+
+
 def build_command(row: dict[str, str], video_gen: dict[str, Any], save_dir: Path) -> str:
     image = resolve_path(row["output_image"])
     output = resolve_path(row["output_video"])
@@ -331,6 +355,7 @@ def generate_video(row: dict[str, str], video_gen: dict[str, Any], logger: loggi
     if not hunyuan_ckpt.exists() and not config_bool(video_gen, "auto_download_weights", False):
         raise FileNotFoundError(f"HUNYUAN_CKPT does not exist or is not configured: {hunyuan_ckpt}")
     ensure_hunyuan_i2v_weights(hunyuan_ckpt, video_gen, logger)
+    ensure_hunyuan_ckpt_symlink(hunyuan_root, hunyuan_ckpt, logger)
 
     save_dir = ROOT / "temp" / "hunyuan" / output_video.stem
     save_dir.mkdir(parents=True, exist_ok=True)

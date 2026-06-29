@@ -443,6 +443,20 @@ ls -lh /models/hunyuan/ckpts/hunyuan-video-i2v-720p/transformers/mp_rank_00_mode
 
 如果你的权重在其他目录，把 `.env` 里的 `HUNYUAN_CKPT` 改成该目录；视频命令会通过 `--model-base` 传给 HunyuanVideo。
 
+部分 HunyuanVideo 代码仍会从项目内相对路径 `./ckpts` 加载 VAE。视频脚本会自动尝试创建软链接：
+
+```text
+/workspace/HunyuanVideo-1.5/ckpts -> /models/hunyuan/ckpts
+```
+
+如果手动处理：
+
+```bash
+cd /workspace/HunyuanVideo-1.5
+rm -f ckpts
+ln -s /models/hunyuan/ckpts ckpts
+```
+
 缺失权重时，推荐显式运行下载脚本：
 
 ```bash
