@@ -156,16 +156,24 @@ def missing_python_modules(modules: list[str], python_bin: str, cwd: Path, logge
     return [module for module in modules if not has_python_module(module, python_bin, cwd, logger)]
 
 
+def config_string(config: dict[str, Any], key: str, default: str = "") -> str:
+    value = str(config.get(key, "") or "").strip()
+    if not value or "${" in value:
+        return default
+    return value
+
+
 def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger: logging.Logger) -> None:
     if str(video_gen.get("auto_install_deps", "true")).lower() in {"0", "false", "no"}:
         return
 
     python_bin = str(video_gen.get("python_bin", "python3"))
     default_required = "loguru imageio diffusers.models.autoencoders.autoencoder_kl deepspeed tensorboard"
-    required_modules = shlex.split(str(video_gen.get("required_modules", default_required) or ""))
+    required_modules = shlex.split(config_string(video_gen, "required_modules", default_required))
     requirements = hunyuan_root / "requirements.txt"
     missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
-    force_packages = str(video_gen.get("force_pip_packages", "") or "").strip()
+    default_force = "diffusers==0.31.0 transformers==4.48.0 tokenizers>=0.21,<0.22"
+    force_packages = config_string(video_gen, "force_pip_packages", default_force)
     if force_packages and missing:
         logger.info("Installing pinned Hunyuan packages because modules are incompatible or missing: %s", ", ".join(missing))
         run_command([python_bin, "-m", "pip", "install", "--force-reinstall", *shlex.split(force_packages)], logger, cwd=hunyuan_root)
@@ -175,7 +183,11 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
         logger.info("Installing Hunyuan requirements because modules are missing: %s", ", ".join(missing))
         run_command([python_bin, "-m", "pip", "install", "-r", str(requirements)], logger, cwd=hunyuan_root)
 
-    extra_packages = str(video_gen.get("extra_pip_packages", "") or "").strip()
+    default_extra = (
+        "loguru imageio imageio-ffmpeg diffusers==0.31.0 "
+        "transformers==4.48.0 tokenizers>=0.21,<0.22 deepspeed tensorboard"
+    )
+    extra_packages = config_string(video_gen, "extra_pip_packages", default_extra)
     missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
     if extra_packages and missing:
         logger.info("Installing Hunyuan extra packages because modules are missing: %s", ", ".join(missing))

@@ -135,8 +135,8 @@ MODEL_DIR=/models
 HUNYUAN_ROOT=/workspace/HunyuanVideo-I2V
 HUNYUAN_CKPT=/models/hunyuan/ckpts
 HUNYUAN_REQUIRED_MODULES="loguru imageio diffusers.models.autoencoders.autoencoder_kl deepspeed tensorboard"
-HUNYUAN_FORCE_PIP_PACKAGES="diffusers==0.31.0"
-HUNYUAN_EXTRA_PIP_PACKAGES="loguru imageio imageio-ffmpeg diffusers==0.31.0 deepspeed tensorboard"
+HUNYUAN_FORCE_PIP_PACKAGES="diffusers==0.31.0 transformers==4.48.0 tokenizers>=0.21,<0.22"
+HUNYUAN_EXTRA_PIP_PACKAGES="loguru imageio imageio-ffmpeg diffusers==0.31.0 transformers==4.48.0 tokenizers>=0.21,<0.22 deepspeed tensorboard"
 ```
 
 如果 Hugging Face 模型需要授权，把 token 写入 `.env` 的 `HF_TOKEN`，不要提交到 git。
