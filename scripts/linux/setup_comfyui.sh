@@ -4,7 +4,7 @@ set -Eeuo pipefail
 COMFYUI_DIR="${COMFYUI_DIR:-/workspace/ComfyUI}"
 COMFYUI_REPO_URL="${COMFYUI_REPO_URL:-https://github.com/comfyanonymous/ComfyUI.git}"
 COMFYUI_MANAGER_REPO_URL="${COMFYUI_MANAGER_REPO_URL:-https://github.com/ltdrdata/ComfyUI-Manager.git}"
-COMFYUI_EXTRA_PIP_PACKAGES="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic blake3 tqdm}"
+COMFYUI_EXTRA_PIP_PACKAGES="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic blake3 tqdm GitPython}"
 COMFYUI_PYTHON_BIN="${COMFYUI_PYTHON_BIN:-python3}"
 COMFYUI_TORCH_PACKAGES="${COMFYUI_TORCH_PACKAGES:-torch torchvision torchaudio}"
 COMFYUI_TORCH_INDEX_URL="${COMFYUI_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
@@ -108,6 +108,7 @@ comfyui_extra_deps_ok() {
 import sqlalchemy  # noqa: F401
 import blake3  # noqa: F401
 import tqdm  # noqa: F401
+import git  # noqa: F401
 PY
 }
 
