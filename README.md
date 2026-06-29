@@ -129,7 +129,7 @@ COMFYUI_PYTHON_BIN=/usr/bin/python3
 COMFYUI_TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
 COMFYUI_TORCH_PACKAGES="torch torchvision torchaudio"
 COMFYUI_NUMPY_PACKAGE="numpy>=1.26,<3"
-COMFYUI_EXTRA_PIP_PACKAGES="SQLAlchemy alembic blake3 tqdm GitPython"
+COMFYUI_EXTRA_PIP_PACKAGES="SQLAlchemy alembic blake3 tqdm GitPython toml"
 
 MODEL_DIR=/models
 HUNYUAN_ROOT=/workspace/HunyuanVideo-I2V
