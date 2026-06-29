@@ -4,7 +4,7 @@ set -Eeuo pipefail
 COMFYUI_DIR="${COMFYUI_DIR:-/workspace/ComfyUI}"
 COMFYUI_REPO_URL="${COMFYUI_REPO_URL:-https://github.com/comfyanonymous/ComfyUI.git}"
 COMFYUI_MANAGER_REPO_URL="${COMFYUI_MANAGER_REPO_URL:-https://github.com/ltdrdata/ComfyUI-Manager.git}"
-COMFYUI_EXTRA_PIP_PACKAGES="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic}"
+COMFYUI_EXTRA_PIP_PACKAGES="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic blake3 tqdm}"
 COMFYUI_PYTHON_BIN="${COMFYUI_PYTHON_BIN:-python3}"
 COMFYUI_TORCH_PACKAGES="${COMFYUI_TORCH_PACKAGES:-torch torchvision torchaudio}"
 COMFYUI_TORCH_INDEX_URL="${COMFYUI_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
@@ -103,6 +103,14 @@ import numpy.dtypes  # noqa: F401
 PY
 }
 
+comfyui_extra_deps_ok() {
+  "$COMFYUI_PYTHON_BIN" - <<'PY' >/dev/null 2>&1
+import sqlalchemy  # noqa: F401
+import blake3  # noqa: F401
+import tqdm  # noqa: F401
+PY
+}
+
 mkdir -p "$(dirname "$TARGET_WORKFLOW")"
 
 if [[ ! -d "$COMFYUI_DIR/.git" ]]; then
@@ -148,8 +156,11 @@ if [[ "$NO_INSTALL" -eq 0 ]]; then
     fi
   fi
   if [[ -n "$COMFYUI_EXTRA_PIP_PACKAGES" ]]; then
-    # Recent ComfyUI asset database code imports SQLAlchemy even when older requirements miss it.
-    "$COMFYUI_PYTHON_BIN" -m pip install $COMFYUI_EXTRA_PIP_PACKAGES
+    if comfyui_extra_deps_ok; then
+      echo "ComfyUI extra dependency check passed, skipping extra package install."
+    else
+      "$COMFYUI_PYTHON_BIN" -m pip install $COMFYUI_EXTRA_PIP_PACKAGES
+    fi
   fi
 fi
 

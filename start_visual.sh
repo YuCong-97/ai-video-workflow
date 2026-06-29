@@ -454,7 +454,7 @@ start_comfyui_background() {
   local comfy_port="8188"
   local log_path="$PROJECT_DIR/logs/comfyui.log"
   local comfy_python="${COMFYUI_PYTHON_BIN:-/usr/bin/python3}"
-  local extra_packages="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic}"
+  local extra_packages="${COMFYUI_EXTRA_PIP_PACKAGES:-SQLAlchemy alembic blake3 tqdm}"
   local torch_packages="${COMFYUI_TORCH_PACKAGES:-torch torchvision torchaudio}"
   local torch_index_url="${COMFYUI_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
   local numpy_package="${COMFYUI_NUMPY_PACKAGE:-numpy>=1.26,<3}"
@@ -486,6 +486,8 @@ start_comfyui_background() {
     if ! "$comfy_python" - <<'PY' >/dev/null 2>&1
 import sqlalchemy  # noqa: F401
 import numpy.dtypes  # noqa: F401
+import blake3  # noqa: F401
+import tqdm  # noqa: F401
 import torch
 torch.cuda.current_device()
 PY
