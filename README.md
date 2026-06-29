@@ -134,6 +134,7 @@ COMFYUI_EXTRA_PIP_PACKAGES="SQLAlchemy alembic blake3 tqdm GitPython toml"
 MODEL_DIR=/models
 HUNYUAN_ROOT=/workspace/HunyuanVideo-I2V
 HUNYUAN_CKPT=/models/hunyuan/ckpts
+HUNYUAN_EXTRA_PIP_PACKAGES=loguru
 ```
 
 如果 Hugging Face 模型需要授权，把 token 写入 `.env` 的 `HF_TOKEN`，不要提交到 git。

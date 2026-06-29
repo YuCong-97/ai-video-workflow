@@ -127,6 +127,45 @@ def default_hunyuan_command_template() -> str:
     )
 
 
+def run_command(command: list[str], logger: logging.Logger, cwd: Path | None = None) -> None:
+    logger.info("Running setup command: %s", " ".join(shlex.quote(item) for item in command))
+    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
+    if result.stdout:
+        logger.info("setup stdout: %s", result.stdout[-4000:])
+    if result.stderr:
+        logger.info("setup stderr: %s", result.stderr[-4000:])
+    if result.returncode != 0:
+        raise RuntimeError(f"Setup command failed exit={result.returncode}: {result.stderr[-2000:]}")
+
+
+def has_python_module(module: str, python_bin: str, cwd: Path, logger: logging.Logger) -> bool:
+    result = subprocess.run(
+        [python_bin, "-c", f"import {module}"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        logger.info("Missing Hunyuan python module=%s stderr=%s", module, result.stderr.strip()[-1000:])
+        return False
+    return True
+
+
+def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger: logging.Logger) -> None:
+    if str(video_gen.get("auto_install_deps", "true")).lower() in {"0", "false", "no"}:
+        return
+
+    python_bin = str(video_gen.get("python_bin", "python3"))
+    requirements = hunyuan_root / "requirements.txt"
+    if requirements.exists() and not has_python_module("loguru", python_bin, hunyuan_root, logger):
+        run_command([python_bin, "-m", "pip", "install", "-r", str(requirements)], logger, cwd=hunyuan_root)
+
+    extra_packages = str(video_gen.get("extra_pip_packages", "") or "").strip()
+    if extra_packages and not has_python_module("loguru", python_bin, hunyuan_root, logger):
+        run_command([python_bin, "-m", "pip", "install", *shlex.split(extra_packages)], logger, cwd=hunyuan_root)
+
+
 def build_command(row: dict[str, str], video_gen: dict[str, Any], save_dir: Path) -> str:
     image = resolve_path(row["output_image"])
     output = resolve_path(row["output_video"])
@@ -173,6 +212,7 @@ def generate_video(row: dict[str, str], video_gen: dict[str, Any], logger: loggi
     hunyuan_root = Path(str(video_gen.get("hunyuan_root", "")))
     if not hunyuan_root.exists():
         raise FileNotFoundError(f"HUNYUAN_ROOT does not exist: {hunyuan_root}")
+    ensure_hunyuan_runtime(hunyuan_root, video_gen, logger)
 
     save_dir = ROOT / "temp" / "hunyuan" / output_video.stem
     save_dir.mkdir(parents=True, exist_ok=True)

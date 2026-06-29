@@ -32,6 +32,7 @@ video_gen:
   hunyuan_root: ${HUNYUAN_ROOT}
   hunyuan_ckpt: ${HUNYUAN_CKPT}
   model_dir: ${MODEL_DIR}
+  extra_pip_packages: ${HUNYUAN_EXTRA_PIP_PACKAGES}
   resolution: 720p
   infer_steps: 50
   video_length: 129
