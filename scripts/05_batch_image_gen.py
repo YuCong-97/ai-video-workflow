@@ -113,6 +113,35 @@ def apply_workflow_placeholders(workflow: dict[str, Any], row: dict[str, str], i
     return json.loads(text)
 
 
+def validate_comfyui_api_workflow(workflow: dict[str, Any], workflow_path: Path) -> None:
+    if "note" in workflow or "placeholders" in workflow:
+        raise ValueError(
+            f"ComfyUI workflow is a placeholder, not an API workflow: {workflow_path}. "
+            "Open ComfyUI, export a real API-format workflow, and save it to this path."
+        )
+
+    valid_nodes = [
+        node
+        for node in workflow.values()
+        if isinstance(node, dict) and "class_type" in node and isinstance(node.get("inputs"), dict)
+    ]
+    if not valid_nodes:
+        raise ValueError(
+            f"Invalid ComfyUI API workflow: {workflow_path}. "
+            "The file should be the API-format JSON exported from ComfyUI and contain nodes with class_type/inputs."
+        )
+
+
+def raise_for_comfyui_error(response: requests.Response, context: str) -> None:
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        body = response.text.strip()
+        if len(body) > 2000:
+            body = body[:2000] + "...[truncated]"
+        raise requests.HTTPError(f"{context}: {exc}; response_body={body}", response=response) from exc
+
+
 def require_comfyui_config(image_gen: dict[str, Any]) -> tuple[str, Path, int]:
     url = str(image_gen.get("comfyui_url", "")).strip().rstrip("/")
     workflow_path = resolve_path(image_gen.get("workflow_path", "input/config/comfyui_workflow_api.json"))
@@ -149,11 +178,12 @@ def submit_comfyui_workflow(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+    validate_comfyui_api_workflow(workflow, workflow_path)
     prompt = apply_workflow_placeholders(workflow, row, image_gen)
     client_id = str(uuid.uuid4())
     logger.info("Submitting ComfyUI workflow shot=%s seed=%s url=%s", row.get("shot_id"), row.get("seed"), url)
     response = requests.post(f"{url}/prompt", json={"prompt": prompt, "client_id": client_id}, timeout=30)
-    response.raise_for_status()
+    raise_for_comfyui_error(response, "ComfyUI /prompt failed")
     prompt_id = response.json()["prompt_id"]
 
     deadline = time.time() + timeout_sec

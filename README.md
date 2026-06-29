@@ -146,6 +146,8 @@ HUNYUAN_CKPT=/models/hunyuan/ckpts
 input/config/comfyui_workflow_api.json
 ```
 
+这个文件必须是从 ComfyUI 导出的真实 API workflow，不能使用 `input/config/comfyui_workflow_api.example.json`，也不能使用脚本自动创建的 placeholder JSON。否则提交到 ComfyUI `/prompt` 时会失败。
+
 workflow 中应包含这些占位符，脚本会在生成时替换：
 
 ```text
@@ -168,6 +170,15 @@ __OUTPUT_PREFIX__
 ```bash
 ./start_visual.sh --workflow-url https://example.com/comfyui_workflow_api.json --port 7860
 ```
+
+快速检查 workflow 是否还是占位文件：
+
+```bash
+cd /workspace/ai-video-workflow
+grep -n '"note"\|"placeholders"' input/config/comfyui_workflow_api.json
+```
+
+如果有输出，说明还不是可用于生成的真实 ComfyUI API workflow。
 
 ## 6. 一键部署空白 RunPod
 
