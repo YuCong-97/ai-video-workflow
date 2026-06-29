@@ -1,359 +1,481 @@
-# AI Short Drama Pipeline
+# AI Short Drama Pipeline - RunPod Linux 部署说明
 
-小说转 AI 短剧 / 动画素材流水线。当前目标是先跑通 MVP：小说章节到剧本、分镜、提示词 CSV、图片/视频任务、人工选片和 ffmpeg 粗剪。
+本项目用于在 RunPod Linux 主机上搭建小说转 AI 短剧 / 动画素材流水线。
 
-## 目录结构
+当前 README 只面向 RunPod / Ubuntu / Linux 主机环境。
 
-- `input/novel/`: 小说输入
-- `input/config/`: 项目、角色、场景和风格配置
-- `data/scripts/`: 剧本 JSON
-- `data/storyboards/`: 分镜 JSON
-- `data/prompts/`: 提示词 CSV
-- `data/dialogue/`: 台词 JSON
-- `assets/`: 角色、场景、BGM、音效素材
-- `outputs/`: 图片、视频、配音、字幕和最终成片
-- `logs/`: 脚本运行日志
-- `temp/`: ffmpeg 等中间文件
-- `scripts/`: 流水线脚本
-- `tools/`: 可复用工具模块
+目标 MVP 流程：
 
-## Docker 环境
-
-推荐用 Docker 统一 Python、ffmpeg、Edge-TTS、OpenAI 客户端、OpenCV 等运行环境。FLUX / SDXL、HunyuanVideo-1.5 和模型权重通常很大，默认通过外部服务或目录挂载接入，不打包进本项目镜像。
-
-## 可视化页面
-
-最终入口是 `start_visual.ps1`。它会完成环境配置、创建挂载目录、构建 Docker 镜像，并启动 Web 页面。
-
-Windows PowerShell：
-
-```bash
-.\start_visual.ps1 -Port 7860
+```text
+小说章节 -> 剧本 JSON -> 分镜 JSON -> 提示词 CSV -> ComfyUI 关键帧 -> HunyuanVideo 视频 -> 人工选片 -> ffmpeg 粗剪
 ```
 
-Linux / RunPod：
+## 1. RunPod 推荐环境
 
-```bash
-chmod +x start_visual.sh
-./start_visual.sh --port 7860
+建议使用 RunPod GPU Pod，并挂载 Network Volume 保存模型、ComfyUI、HunyuanVideo 和输出文件。
+
+最低建议：
+
+| 用途 | GPU | 磁盘 / Volume |
+| --- | --- | --- |
+| MVP 测试 | RTX 3090 / RTX 4090 24GB | Container Disk 80GB，Network Volume 200GB+ |
+| 批量生成 | RTX A6000 / L40S / A40 48GB | Container Disk 100GB+，Network Volume 500GB+ |
+| 更高质量 / 更长视频 | A100 / H100 80GB | Container Disk 150GB+，Network Volume 1TB+ |
+
+推荐目录：
+
+```text
+/workspace/aiVideoWorkFlow        本项目
+/workspace/ComfyUI                ComfyUI
+/workspace/HunyuanVideo-I2V       HunyuanVideo-I2V
+/models/hunyuan/ckpts             HunyuanVideo 权重
 ```
 
-完全空白的 RunPod 首次部署，使用一键全量模式：
+## 2. 创建 Pod
+
+RunPod Pod 建议配置：
+
+| 项目 | 建议值 |
+| --- | --- |
+| 镜像 | RunPod PyTorch / CUDA / Ubuntu 类镜像 |
+| HTTP Port | `7860` |
+| ComfyUI Port | `8188`，内部访问即可 |
+| Volume Mount | `/workspace` 和 `/models` |
+| Python | Python 3.10+ |
+| 系统依赖 | `git`、`git-lfs`、`ffmpeg`、`python3-venv`、`build-essential` |
+
+如果是空白 RunPod 主机，后面的 `--runpod-full` 会自动安装常见系统依赖、Python 依赖、ComfyUI、HunyuanVideo-I2V，并尝试下载模型。
+
+## 3. 获取项目
+
+在 RunPod Web Terminal 或 SSH 中执行：
 
 ```bash
+cd /workspace
+git clone <your-repo-url> aiVideoWorkFlow
+cd /workspace/aiVideoWorkFlow
 chmod +x start_visual.sh scripts/linux/*.sh
-./start_visual.sh --runpod-full --port 7860
 ```
 
-如果已经有 ComfyUI API workflow，建议首次部署时一并传入：
+如果项目已经存在：
 
 ```bash
+cd /workspace/aiVideoWorkFlow
+git pull --ff-only
+chmod +x start_visual.sh scripts/linux/*.sh
+```
+
+如果不用 git，也可以把项目压缩成 zip 后上传到 RunPod。建议在打包时排除临时文件、输出文件、模型权重和虚拟环境：
+
+```bash
+zip -r aiVideoWorkFlow.zip aiVideoWorkFlow \
+  -x "aiVideoWorkFlow/.git/*" \
+  -x "aiVideoWorkFlow/.venv/*" \
+  -x "aiVideoWorkFlow/models/*" \
+  -x "aiVideoWorkFlow/outputs/*" \
+  -x "aiVideoWorkFlow/logs/*" \
+  -x "aiVideoWorkFlow/temp/*"
+```
+
+把 `aiVideoWorkFlow.zip` 上传到 RunPod 的 `/workspace` 后，在 Linux 主机上解压：
+
+```bash
+cd /workspace
+apt-get update && apt-get install -y unzip
+unzip aiVideoWorkFlow.zip
+cd /workspace/aiVideoWorkFlow
+chmod +x start_visual.sh scripts/linux/*.sh
+```
+
+如果 zip 解压后多了一层目录，例如 `/workspace/aiVideoWorkFlow-main/aiVideoWorkFlow`，可以移动成推荐目录：
+
+```bash
+cd /workspace
+mv aiVideoWorkFlow-main/aiVideoWorkFlow ./aiVideoWorkFlow
+cd /workspace/aiVideoWorkFlow
+chmod +x start_visual.sh scripts/linux/*.sh
+```
+
+如果目标目录已经存在，先改名备份，不要直接覆盖已有输出：
+
+```bash
+cd /workspace
+mv aiVideoWorkFlow aiVideoWorkFlow_backup_$(date +%Y%m%d_%H%M%S)
+unzip aiVideoWorkFlow.zip
+cd /workspace/aiVideoWorkFlow
+chmod +x start_visual.sh scripts/linux/*.sh
+```
+
+## 4. 配置环境变量
+
+首次运行脚本会从 `.env.example` 创建 `.env`。也可以手动创建：
+
+```bash
+cp .env.example .env
+```
+
+RunPod Linux 推荐配置：
+
+```bash
+APP_PORT=7860
+OPENAI_API_KEY=
+HF_TOKEN=
+
+COMFYUI_URL=http://127.0.0.1:8188
+COMFYUI_DIR=/workspace/ComfyUI
+COMFYUI_PYTHON_BIN=/usr/bin/python3
+COMFYUI_TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+COMFYUI_TORCH_PACKAGES=torch torchvision torchaudio
+COMFYUI_EXTRA_PIP_PACKAGES=SQLAlchemy alembic
+
+MODEL_DIR=/models
+HUNYUAN_ROOT=/workspace/HunyuanVideo-I2V
+HUNYUAN_CKPT=/models/hunyuan/ckpts
+```
+
+如果 Hugging Face 模型需要授权，把 token 写入 `.env` 的 `HF_TOKEN`，不要提交到 git。
+
+## 5. 准备 ComfyUI API Workflow
+
+真实图片生成需要 ComfyUI API 格式 workflow：
+
+```text
+input/config/comfyui_workflow_api.json
+```
+
+workflow 中应包含这些占位符，脚本会在生成时替换：
+
+```text
+__PROMPT__
+__NEGATIVE_PROMPT__
+__SEED__
+__WIDTH__
+__HEIGHT__
+__OUTPUT_PREFIX__
+```
+
+如果已有 workflow 文件，例如 `/workspace/workflows/flux_api.json`，启动时传入：
+
+```bash
+./start_visual.sh --workflow /workspace/workflows/flux_api.json --port 7860
+```
+
+也可以从 URL 下载：
+
+```bash
+./start_visual.sh --workflow-url https://example.com/comfyui_workflow_api.json --port 7860
+```
+
+## 6. 一键部署空白 RunPod
+
+空白 RunPod 首次部署：
+
+```bash
+cd /workspace/aiVideoWorkFlow
+chmod +x start_visual.sh scripts/linux/*.sh
 ./start_visual.sh \
   --runpod-full \
-  --workflow /workspace/workflows/comfyui_workflow_api.json \
+  --workflow /workspace/workflows/flux_api.json \
   --port 7860
 ```
 
-`--runpod-full` 会安装 Ubuntu/RunPod 常见系统依赖、Python 依赖、ComfyUI、ComfyUI-Manager、HunyuanVideo-I2V、Hunyuan 模型权重，并后台启动 ComfyUI 后再启动本项目 Web 页面。重复运行同一条命令时，已有 ComfyUI/Hunyuan 代码目录默认不会 `git pull`，已有 Hunyuan 权重文件默认不会重复下载。ComfyUI 的 FLUX/SDXL 具体模型和 workflow 强相关，如果你的 workflow 需要私有或授权模型，请先通过环境变量、Volume 或手动下载放到 ComfyUI 对应模型目录。
+`--runpod-full` 会执行：
 
-如果 Hugging Face 模型需要授权，推荐写入本地 `.env`，不要提交到 git：
+- 安装 Ubuntu 常见依赖。
+- 创建 Python 虚拟环境并安装 `requirements.txt`。
+- 准备 ComfyUI 和 ComfyUI-Manager。
+- 准备 HunyuanVideo-I2V。
+- 下载或复用 HunyuanVideo 模型权重。
+- 启动 ComfyUI 后台服务。
+- 检查真实生成依赖。
+- 启动本项目 Web 页面。
 
-```bash
-echo 'HF_TOKEN=hf_xxx' >> .env
-```
+已有模型和代码目录时，脚本默认会复用，不会强制覆盖或删除历史输出。
 
-需要主动更新 ComfyUI/Hunyuan 代码时加 `--update-code`。如果上次模型下载不完整，需要强制重新下载或续传时加 `--force-model-download`：
+## 7. 只安装代码，不下载大模型
 
-```bash
-./start_visual.sh --runpod-full --workflow /workspace/workflows/comfyui_workflow_api.json --port 7860 --force-model-download
-```
-
-如果安装 Hunyuan 依赖时报 `tokenizers==0.15.0` 和 `transformers==4.48.0` 冲突，当前 `scripts/linux/setup_hunyuan_i2v.sh` 会自动生成临时兼容版 requirements，跳过旧的 `tokenizers==0.15.0` 固定版本，让 `transformers` 安装匹配的 `tokenizers>=0.21,<0.22`。
-
-如果启动停在 `Starting ComfyUI in background`，通常是在等 ComfyUI 首次加载。可以另开一个终端查看日志：
-
-```bash
-tail -n 80 logs/comfyui.log
-```
-
-更新后的脚本会每 10 秒打印等待状态，并在超时后自动显示 ComfyUI 日志尾部。
-
-如果 `logs/comfyui.log` 出现 `ModuleNotFoundError: No module named 'sqlalchemy'`，说明 ComfyUI 依赖没有装全。当前脚本会自动补装 `SQLAlchemy alembic`；也可以手动执行：
+如果想先检查链路，不下载 HunyuanVideo 权重：
 
 ```bash
-python3 -m pip install SQLAlchemy alembic
+./start_visual.sh \
+  --setup-real-gen \
+  --no-model \
+  --workflow /workspace/workflows/flux_api.json \
+  --port 7860
 ```
 
-如果 ComfyUI 报 `The NVIDIA driver on your system is too old (found version 12040)`，说明当前 PyTorch wheel 的 CUDA 版本高于 RunPod 容器驱动。当前脚本默认用系统 Python `/usr/bin/python3` 启动 ComfyUI，并在 torch CUDA 初始化失败时安装 CUDA 12.4 对应 wheel：
+之后手动准备权重，再执行检查：
 
 ```bash
-/usr/bin/python3 -m pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+python scripts/check_real_generation.py
 ```
 
-如果你的 RunPod 镜像驱动不是 CUDA 12.4，可在 `.env` 里覆盖 `COMFYUI_TORCH_INDEX_URL`。
+## 8. 复用已有 ComfyUI / HunyuanVideo
 
-如果 HunyuanVideo、权重或 ComfyUI workflow 不在默认位置，可以启动时直接传入：
+如果 RunPod Volume 里已经有 ComfyUI、HunyuanVideo 和模型：
 
 ```bash
 ./start_visual.sh \
   --port 7860 \
   --comfyui-url http://127.0.0.1:8188 \
-  --workflow /workspace/workflows/comfyui_workflow_api.json \
-  --hunyuan-root /workspace/HunyuanVideo-1.5 \
-  --hunyuan-ckpt /models/hunyuan/ckpts
+  --comfyui-dir /workspace/ComfyUI \
+  --hunyuan-root /workspace/HunyuanVideo-I2V \
+  --hunyuan-ckpt /models/hunyuan/ckpts \
+  --workflow /workspace/workflows/flux_api.json
 ```
 
-只检查真实生成依赖，不启动页面：
+如果 ComfyUI 已经由别的进程启动，只要保证 `COMFYUI_URL` 可访问即可。
 
-```bash
-./start_visual.sh --check-only
-```
+## 9. 启动 Web 页面
 
-首次在 RunPod 准备 ComfyUI + HunyuanVideo-I2V + 模型权重：
-
-```bash
-chmod +x start_visual.sh scripts/linux/*.sh
-./start_visual.sh \
-  --runpod-full \
-  --workflow /workspace/workflows/comfyui_workflow_api.json \
-  --port 7860
-```
-
-如果只想安装代码、不下载大模型：
-
-```bash
-./start_visual.sh --setup-real-gen --no-model --workflow /workspace/workflows/comfyui_workflow_api.json
-```
-
-也可以单独运行 Linux 下载脚本：
-
-```bash
-scripts/linux/setup_comfyui.sh --workflow /workspace/workflows/comfyui_workflow_api.json
-scripts/linux/setup_hunyuan_i2v.sh --root /workspace/HunyuanVideo-I2V --ckpt /models/hunyuan/ckpts
-scripts/linux/setup_real_generation.sh --workflow /workspace/workflows/comfyui_workflow_api.json
-```
-
-打开：
-
-```text
-http://localhost:7860
-```
-
-换端口：
-
-```bash
-.\start_visual.ps1 -Port 8899
-./start_visual.sh --port 8899
-```
-
-页面可输入小说文本、正向 Prompt、负向 Prompt、参考图片、seed、运动强度、镜头时长、FPS 和输出路径。点击生成后会写入：
-
-- `input/novel/{episode}_{job_id}.txt`
-- `assets/references/{job_id}/`
-- `data/prompts/{episode}_{job_id}_prompts.csv`
-- `data/jobs/{job_id}/job_config.json`
-- `logs/{job_id}_visual_generate.log`
-
-注意：当前 Web 页面默认会尝试真实 AI 生成：先调用 ComfyUI 生成关键帧，再调用 HunyuanVideo 生成视频。下拉框里的 **链路测试视频（非AI）** 只用于验证端口、页面、后端、日志、CSV、输出路径和 mp4 写入链路，会生成 `{输出路径}/videos/raw/*.mp4`，但画面不是 AI 结果。
-
-页面里的 **生成内容** 选项：
-
-- `关键帧 + 视频`：先运行 `scripts/05_batch_image_gen.py`，再运行 `scripts/06_batch_video_gen.py`。
-- `只生成关键帧`：只调用 ComfyUI / FLUX / SDXL 生成图片。
-- `只生成视频`：跳过图片生成，直接读取 CSV 中已有 `output_image` 调 HunyuanVideo 生成视频。
-
-真实 AI 生成前必须准备：
-
-1. 启动 ComfyUI，并确保 `COMFYUI_URL` 可访问，例如 `http://127.0.0.1:8188`。
-2. 在 ComfyUI 里导出 API 格式工作流到 `input/config/comfyui_workflow_api.json`。
-3. 工作流里用占位符填关键字段：`__PROMPT__`、`__NEGATIVE_PROMPT__`、`__SEED__`、`__WIDTH__`、`__HEIGHT__`、`__OUTPUT_PREFIX__`。
-4. 安装或挂载 HunyuanVideo 到 `HUNYUAN_ROOT`。
-5. 模型权重放到 `HUNYUAN_CKPT`。
-6. 如果你的 HunyuanVideo 启动命令不同，修改 `input/config/project.yaml` 里的 `video_gen.command_template`。
-
-`start_visual.sh` 会自动处理一部分准备工作：
-
-- 自动把 `.env` 里的 `COMFYUI_URL=http://host.docker.internal:8188` 改成 RunPod 常用的 `http://127.0.0.1:8188`。
-- 自动探测常见 HunyuanVideo 目录：`/workspace/HunyuanVideo-1.5`、`/workspace/HunyuanVideo-I2V`、`/workspace/HunyuanVideo`。
-- 自动探测常见权重目录：`/models/hunyuan/ckpts`、`/workspace/models/hunyuan/ckpts`、Hunyuan 项目内 `ckpts`。
-- 使用 `--workflow` 时会把指定 ComfyUI API workflow 复制到 `input/config/comfyui_workflow_api.json`。
-- 启动前会运行 `python scripts/check_real_generation.py`，把缺失项打印出来。
-- 显式传入 `--runpod-full` 时，会安装系统依赖、准备 ComfyUI、HunyuanVideo-I2V 和模型权重，并后台启动 ComfyUI。
-- 显式传入 `--setup-real-gen` 时，会调用 `scripts/linux/setup_real_generation.sh` 准备 ComfyUI、HunyuanVideo-I2V 和模型权重。
-
-它默认不会自动下载 HunyuanVideo 或模型权重，避免误占用大量磁盘和流量。只有显式使用 `--runpod-full`、`--setup-real-gen` 或手动运行 `scripts/linux/setup_hunyuan_i2v.sh` 时才会下载。
-
-真实生成可单独调试：
-
-```bash
-python scripts/check_real_generation.py
-python scripts/05_batch_image_gen.py --episode ep01 --prompt-csv data/prompts/你的_prompts.csv --limit 1
-python scripts/06_batch_video_gen.py --episode ep01 --prompt-csv data/prompts/你的_prompts.csv --limit 1
-```
-
-停止页面：
-
-```bash
-docker compose stop web
-```
-
-一键初始化：
-
-```bash
-.\docker_setup.ps1
-```
-
-如果只想检查 compose 配置、不构建镜像：
-
-```bash
-.\docker_setup.ps1 -NoBuild -NoCheck
-```
-
-手动步骤：
-
-```bash
-Copy-Item .env.example .env
-docker compose build
-docker compose run --rm pipeline python --version
-docker compose run --rm pipeline ffmpeg -version
-```
-
-进入容器：
-
-```bash
-docker compose run --rm pipeline
-```
-
-在容器中运行单步脚本：
-
-```bash
-docker compose run --rm pipeline python scripts/04_generate_prompts.py --episode ep01
-docker compose run --rm pipeline python scripts/06_batch_video_gen.py --episode ep01 --shot ep01_sc01_sh01 --dry-run
-```
-
-默认挂载：
-
-- 项目目录挂载到 `/app`
-- 主机 `./models` 挂载到容器 `/models`
-- 主机 `./external/HunyuanVideo-1.5` 挂载到容器 `/workspace/HunyuanVideo-1.5`
-- ComfyUI 默认地址是 `http://host.docker.internal:8188`
-
-## RunPod 服务器配置推荐
-
-RunPod 上建议用 **Pod + Docker 镜像 + Network Volume** 的方式部署。RunPod 官方 Pod Template 支持配置容器镜像、硬件规格、容器磁盘、Volume、端口、环境变量和启动命令；环境变量适合放 `OPENAI_API_KEY`、`COMFYUI_URL`、`HUNYUAN_ROOT`、`HUNYUAN_CKPT` 这类配置，不要写进代码或镜像。
-
-> 说明：GPU 库存和价格变化很快，创建 Pod 前以 RunPod 当前 Pricing 页面为准。HunyuanVideo-1.5 官方要求 NVIDIA CUDA GPU，开启模型 offload 时最低约 14GB VRAM；实际批量生产建议至少 24GB VRAM，追求速度和稳定性建议 48GB-80GB。
-
-### 推荐档位
-
-| 档位 | 推荐 GPU | 适合用途 | 建议配置 |
-| --- | --- | --- | --- |
-| MVP 测试 | RTX 4090 24GB / RTX 3090 24GB | ComfyUI、FLUX/SDXL 关键帧、小批量 HunyuanVideo-1.5 I2V 测试 | 8-16 vCPU，48-64GB RAM，Container Disk 40-80GB，Network Volume 150-300GB |
-| 批量生产 | RTX A6000 48GB / L40S 48GB / A40 48GB | 多 seed、多 motion level 批量生成，减少 OOM 和重跑 | 16-24 vCPU，96-128GB RAM，Container Disk 80-120GB，Network Volume 300-800GB |
-| 高质量/长视频 | A100 80GB / H100 80GB | 更高分辨率、更长时长、更高吞吐、后续训练或 LoRA | 24-32 vCPU，128-256GB RAM，Container Disk 120-200GB，Network Volume 800GB-2TB |
-
-### 本项目首选配置
-
-当前项目阶段推荐从 **RTX 4090 24GB + 64GB RAM + 300GB Network Volume** 起步：
-
-- 先跑通 MVP：小说输入、prompt CSV、关键帧任务、HunyuanVideo dry-run、ffmpeg 粗剪。
-- 图片生成和视频生成分开跑，避免一个容器里同时占满显存。
-- HunyuanVideo-1.5 如果 OOM，先降低分辨率、时长、batch、候选数量，或启用 offload。
-- 批量任务稳定后再升级到 48GB 或 80GB GPU。
-
-### Pod Template 建议
-
-| 项目 | 建议值 |
-| --- | --- |
-| Container Image | 先用本项目 Dockerfile 构建的镜像；或基于 RunPod PyTorch/CUDA 模板后拉取本仓库 |
-| HTTP Port | `7860`，对应 `start_visual.ps1 -Port 7860` |
-| TCP/SSH | 按需开启，生产时尽量只开放必要端口 |
-| Container Disk | 80GB 起步，放系统依赖、Python 包、临时构建缓存 |
-| Network Volume Mount | `/workspace` 或 `/models` |
-| 模型目录 | `/models` |
-| HunyuanVideo 目录 | `/workspace/HunyuanVideo-1.5` |
-| 输出目录 | `/app/outputs` 或挂载到 Volume 的 `/workspace/outputs` |
-
-### 环境变量
-
-```bash
-APP_PORT=7860
-OPENAI_API_KEY=
-COMFYUI_URL=http://127.0.0.1:8188
-MODEL_DIR=/models
-HUNYUAN_ROOT=/workspace/HunyuanVideo-1.5
-HUNYUAN_CKPT=/models/hunyuan/ckpts
-```
-
-### RunPod 启动流程
-
-1. 创建 Network Volume，建议与目标 GPU 选择同一区域。
-2. 创建 GPU Pod，优先选择 24GB 以上显存。
-3. 选择自定义 Docker 镜像，或使用 PyTorch/CUDA 模板后克隆本项目。
-4. 挂载 Volume 到 `/models` 和 `/workspace`，模型权重不要放进 git。
-5. 配置环境变量和 HTTP 端口 `7860`。
-6. 启动后进入容器运行：
-
-```bash
-chmod +x start_visual.sh scripts/linux/*.sh
-./start_visual.sh --runpod-full --port 7860
-```
-
-后续 Pod 已经复用同一个 Network Volume、有模型缓存时，可以只启动页面：
+常规启动：
 
 ```bash
 ./start_visual.sh --port 7860
 ```
 
-如果使用本项目 Docker Compose：
+RunPod 控制台里打开 HTTP Service 对应的 `7860` 端口。
 
-```bash
-docker compose up -d web
+启动后页面会写入这些文件：
+
+```text
+input/novel/{episode}_{job_id}.txt
+assets/references/{job_id}/
+data/prompts/{episode}_{job_id}_prompts.csv
+data/jobs/{job_id}/job_config.json
+outputs/images/
+outputs/videos/raw/
+logs/{job_id}_visual_generate.log
 ```
 
-### 成本控制建议
+## 10. 真实生成检查
 
-- 开发期选 Community Cloud 或低成本 24GB GPU；稳定生产再考虑 Secure Cloud。
-- 大模型、ComfyUI custom nodes、HunyuanVideo 权重放 Network Volume，避免每次重建 Pod 重新下载。
-- 输出视频及时同步到对象存储或本地，避免 Volume 越积越大。
-- 不生成时停止 Pod；需要 API 常驻时再考虑 Serverless 或常驻 Secure Cloud。
-- 不要在启动脚本里强制下载大模型，模型下载应手动执行并可断点续传。
-
-参考链接：
-
-- [RunPod GPU Pricing](https://www.runpod.io/pricing)
-- [RunPod Pod Templates](https://docs.runpod.io/pods/templates/overview)
-- [RunPod Environment Variables](https://docs.runpod.io/pods/templates/environment-variables)
-- [HunyuanVideo-1.5 GitHub](https://github.com/Tencent-Hunyuan/HunyuanVideo-1.5)
-
-## 本地安装依赖
+只检查依赖，不启动页面：
 
 ```bash
-pip install -r requirements.txt
+./start_visual.sh --check-only
 ```
 
-## 最小运行流程
+或直接执行：
 
 ```bash
-python scripts/01_novel_to_script.py --episode ep01
-python scripts/02_script_to_storyboard.py --episode ep01
-python scripts/04_generate_prompts.py --episode ep01
-python scripts/05_batch_image_gen.py --episode ep01 --dry-run
-python scripts/06_batch_video_gen.py --episode ep01 --dry-run
+python scripts/check_real_generation.py
+```
+
+检查项包括：
+
+- `COMFYUI_URL` 是否可访问。
+- `input/config/comfyui_workflow_api.json` 是否存在。
+- `HUNYUAN_ROOT` 是否存在并包含 `sample_image2video.py`。
+- `HUNYUAN_CKPT` 是否存在且包含权重文件。
+
+## 11. 单镜头调试
+
+生成提示词：
+
+```bash
+python scripts/04_generate_prompts.py --episode ep01 --overwrite
+```
+
+只生成一条关键帧任务：
+
+```bash
+python scripts/05_batch_image_gen.py \
+  --episode ep01 \
+  --prompt-csv data/prompts/ep01_prompts.csv \
+  --limit 1
+```
+
+只生成一条视频任务：
+
+```bash
+python scripts/06_batch_video_gen.py \
+  --episode ep01 \
+  --prompt-csv data/prompts/ep01_prompts.csv \
+  --limit 1
+```
+
+指定镜头 dry-run，检查命令但不生成：
+
+```bash
+python scripts/06_batch_video_gen.py \
+  --episode ep01 \
+  --shot ep01_sc01_sh01 \
+  --dry-run
+```
+
+## 12. MVP 命令行流程
+
+```bash
+python scripts/01_novel_to_script.py --episode ep01 --overwrite
+python scripts/02_script_to_storyboard.py --episode ep01 --overwrite
+python scripts/03_generate_character_cards.py --episode ep01
+python scripts/04_generate_prompts.py --episode ep01 --overwrite
+python scripts/05_batch_image_gen.py --episode ep01
+python scripts/06_batch_video_gen.py --episode ep01
 python scripts/07_score_videos.py --episode ep01
 python scripts/10_assemble_episode.py --episode ep01
 ```
 
-## 单镜头测试
+如果只是验证流程，可以先使用 `--dry-run`：
 
 ```bash
-python scripts/06_batch_video_gen.py --episode ep01 --shot ep01_sc01_sh01 --dry-run
+python scripts/05_batch_image_gen.py --episode ep01 --dry-run --limit 1
+python scripts/06_batch_video_gen.py --episode ep01 --dry-run --limit 1
 ```
 
-## 配置
+## 13. 重要配置文件
 
-主配置文件是 `input/config/project.yaml`。模型、seed、运动强度、分辨率、时长和外部工具路径应优先从配置读取，不要写死在脚本里。
+主配置：
 
-## 状态
+```text
+input/config/project.yaml
+```
 
-当前仓库已搭好目录骨架和占位脚本，后续按 MVP 顺序逐步实现每个步骤。
+关键字段：
+
+- `image_gen.comfyui_url`：ComfyUI 地址，默认从 `COMFYUI_URL` 读取。
+- `image_gen.workflow_path`：ComfyUI API workflow。
+- `video_gen.hunyuan_root`：HunyuanVideo-I2V 代码目录。
+- `video_gen.hunyuan_ckpt`：HunyuanVideo 权重目录。
+- `video_gen.command_template`：视频生成命令模板。
+- `video_gen.seeds`：候选 seed 列表。
+- `video_gen.motion_levels`：候选运动强度列表。
+
+修改模型路径、分辨率、seed、时长时，优先改 `project.yaml` 或 `.env`，不要改脚本里的硬编码。
+
+## 14. 日志
+
+主要日志位置：
+
+```text
+logs/comfyui.log
+logs/{job_id}_visual_generate.log
+logs/*_batch_video_gen.log
+```
+
+查看 ComfyUI 日志：
+
+```bash
+tail -n 100 logs/comfyui.log
+```
+
+查看最近日志：
+
+```bash
+ls -lt logs | head
+```
+
+## 15. 常见故障
+
+### ComfyUI 启动很久
+
+首次启动会安装依赖、加载模型和扫描节点，先看日志：
+
+```bash
+tail -n 100 logs/comfyui.log
+```
+
+### `COMFYUI_URL` 不可访问
+
+确认 ComfyUI 在 8188 端口：
+
+```bash
+curl http://127.0.0.1:8188/system_stats
+```
+
+如果失败，可让启动脚本拉起 ComfyUI：
+
+```bash
+./start_visual.sh --start-comfyui --port 7860
+```
+
+### 缺少 ComfyUI workflow
+
+把 ComfyUI 导出的 API workflow 放到：
+
+```text
+input/config/comfyui_workflow_api.json
+```
+
+或启动时传入：
+
+```bash
+./start_visual.sh --workflow /workspace/workflows/flux_api.json --port 7860
+```
+
+### HunyuanVideo 路径不对
+
+显式传入路径：
+
+```bash
+./start_visual.sh \
+  --hunyuan-root /workspace/HunyuanVideo-I2V \
+  --hunyuan-ckpt /models/hunyuan/ckpts \
+  --port 7860
+```
+
+### 模型下载中断
+
+复用相同目录重新运行即可。需要强制下载或续传时：
+
+```bash
+./start_visual.sh \
+  --runpod-full \
+  --workflow /workspace/workflows/flux_api.json \
+  --force-model-download \
+  --port 7860
+```
+
+### PyTorch CUDA wheel 与驱动不匹配
+
+默认使用 CUDA 12.4 wheel：
+
+```bash
+COMFYUI_TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+```
+
+如 RunPod 镜像驱动不同，在 `.env` 中改 `COMFYUI_TORCH_INDEX_URL`，再重新启动。
+
+### HunyuanVideo 依赖冲突
+
+`scripts/linux/setup_hunyuan_i2v.sh` 会跳过旧的 `tokenizers==0.15.0` 固定版本，让 `transformers` 安装匹配版本。仍失败时，优先查看 pip 报错和 HunyuanVideo 当前 requirements。
+
+### 显存不足
+
+先降低这些配置：
+
+- `input/config/project.yaml` 中的 `image_gen.width`、`image_gen.height`。
+- `video_gen.resolution`。
+- `video_gen.video_length`。
+- 单次生成数量和 `--limit`。
+
+必要时换 48GB 或 80GB GPU。
+
+## 16. 停止服务
+
+前台运行时按：
+
+```text
+Ctrl+C
+```
+
+如果 ComfyUI 由脚本后台启动，可以查看 PID：
+
+```bash
+cat temp/comfyui.pid
+```
+
+停止 ComfyUI：
+
+```bash
+kill "$(cat temp/comfyui.pid)"
+```
+
+## 17. 部署原则
+
+- 模型权重放在 `/models` 或 Network Volume，不提交到 git。
+- 输出视频和图片保存在 `outputs/`，重要结果及时同步或备份。
+- 不在脚本里写死密钥、模型路径或绝对输出路径。
+- 大模型下载必须显式触发，避免误占用磁盘和流量。
+- 先用 `--check-only` 和 `--dry-run` 跑通链路，再批量生成。
