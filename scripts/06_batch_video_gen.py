@@ -152,17 +152,26 @@ def has_python_module(module: str, python_bin: str, cwd: Path, logger: logging.L
     return True
 
 
+def missing_python_modules(modules: list[str], python_bin: str, cwd: Path, logger: logging.Logger) -> list[str]:
+    return [module for module in modules if not has_python_module(module, python_bin, cwd, logger)]
+
+
 def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger: logging.Logger) -> None:
     if str(video_gen.get("auto_install_deps", "true")).lower() in {"0", "false", "no"}:
         return
 
     python_bin = str(video_gen.get("python_bin", "python3"))
+    required_modules = shlex.split(str(video_gen.get("required_modules", "loguru imageio") or ""))
     requirements = hunyuan_root / "requirements.txt"
-    if requirements.exists() and not has_python_module("loguru", python_bin, hunyuan_root, logger):
+    missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
+    if requirements.exists() and missing:
+        logger.info("Installing Hunyuan requirements because modules are missing: %s", ", ".join(missing))
         run_command([python_bin, "-m", "pip", "install", "-r", str(requirements)], logger, cwd=hunyuan_root)
 
     extra_packages = str(video_gen.get("extra_pip_packages", "") or "").strip()
-    if extra_packages and not has_python_module("loguru", python_bin, hunyuan_root, logger):
+    missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
+    if extra_packages and missing:
+        logger.info("Installing Hunyuan extra packages because modules are missing: %s", ", ".join(missing))
         run_command([python_bin, "-m", "pip", "install", *shlex.split(extra_packages)], logger, cwd=hunyuan_root)
 
 
