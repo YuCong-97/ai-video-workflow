@@ -156,10 +156,10 @@ __HEIGHT__
 __OUTPUT_PREFIX__
 ```
 
-如果已有 workflow 文件，例如 `/workspace/workflows/flux_api.json`，启动时传入：
+如果已有 workflow 文件，例如 `/workspace/workflows/your_comfyui_workflow_api.json`，启动时传入：
 
 ```bash
-./start_visual.sh --workflow /workspace/workflows/flux_api.json --port 7860
+./start_visual.sh --workflow /workspace/workflows/your_comfyui_workflow_api.json --port 7860
 ```
 
 也可以从 URL 下载：
@@ -177,9 +177,11 @@ cd /workspace/aiVideoWorkFlow
 chmod +x start_visual.sh scripts/linux/*.sh
 ./start_visual.sh \
   --runpod-full \
-  --workflow /workspace/workflows/flux_api.json \
+  --workflow /workspace/workflows/your_comfyui_workflow_api.json \
   --port 7860
 ```
+
+注意：`--workflow` 后面的文件必须已经存在。如果还没有 ComfyUI API workflow，先不要传 `--workflow` 参数，等 ComfyUI 启动后导出真实 workflow 再补。
 
 `--runpod-full` 会执行：
 
@@ -202,7 +204,7 @@ chmod +x start_visual.sh scripts/linux/*.sh
 ./start_visual.sh \
   --setup-real-gen \
   --no-model \
-  --workflow /workspace/workflows/flux_api.json \
+  --workflow /workspace/workflows/your_comfyui_workflow_api.json \
   --port 7860
 ```
 
@@ -223,7 +225,7 @@ python scripts/check_real_generation.py
   --comfyui-dir /workspace/ComfyUI \
   --hunyuan-root /workspace/HunyuanVideo-I2V \
   --hunyuan-ckpt /models/hunyuan/ckpts \
-  --workflow /workspace/workflows/flux_api.json
+  --workflow /workspace/workflows/your_comfyui_workflow_api.json
 ```
 
 如果 ComfyUI 已经由别的进程启动，只要保证 `COMFYUI_URL` 可访问即可。
@@ -403,7 +405,7 @@ input/config/comfyui_workflow_api.json
 或启动时传入：
 
 ```bash
-./start_visual.sh --workflow /workspace/workflows/flux_api.json --port 7860
+./start_visual.sh --workflow /workspace/workflows/your_comfyui_workflow_api.json --port 7860
 ```
 
 ### HunyuanVideo 路径不对
@@ -424,7 +426,7 @@ input/config/comfyui_workflow_api.json
 ```bash
 ./start_visual.sh \
   --runpod-full \
-  --workflow /workspace/workflows/flux_api.json \
+  --workflow /workspace/workflows/your_comfyui_workflow_api.json \
   --force-model-download \
   --port 7860
 ```

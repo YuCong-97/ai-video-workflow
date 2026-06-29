@@ -47,10 +47,10 @@ Usage:
 Examples:
   ./start_visual.sh --port 7860
   bash start_visual.sh --port 8899
-  ./start_visual.sh --workflow /workspace/workflows/flux_api.json
+  ./start_visual.sh --workflow /workspace/workflows/your_comfyui_workflow_api.json
   ./start_visual.sh --hunyuan-root /workspace/HunyuanVideo-I2V --hunyuan-ckpt /models/hunyuan/ckpts
-  ./start_visual.sh --setup-real-gen --workflow /workspace/workflows/flux_api.json
-  ./start_visual.sh --runpod-full --workflow /workspace/workflows/flux_api.json
+  ./start_visual.sh --setup-real-gen --workflow /workspace/workflows/your_comfyui_workflow_api.json
+  ./start_visual.sh --runpod-full --workflow /workspace/workflows/your_comfyui_workflow_api.json
 
 Notes:
   Use this script on Linux / RunPod.
