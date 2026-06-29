@@ -134,6 +134,7 @@ COMFYUI_EXTRA_PIP_PACKAGES="SQLAlchemy alembic blake3 tqdm GitPython toml"
 MODEL_DIR=/models
 HUNYUAN_ROOT=/workspace/HunyuanVideo-I2V
 HUNYUAN_CKPT=/models/hunyuan/ckpts
+HUNYUAN_MODEL_REPO=tencent/HunyuanVideo-I2V
 HUNYUAN_REQUIRED_MODULES="loguru imageio diffusers.models.autoencoders.autoencoder_kl deepspeed tensorboard"
 HUNYUAN_FORCE_PIP_PACKAGES="diffusers==0.31.0 transformers==4.48.0 tokenizers>=0.21,<0.22"
 HUNYUAN_EXTRA_PIP_PACKAGES="loguru imageio imageio-ffmpeg diffusers==0.31.0 transformers==4.48.0 tokenizers>=0.21,<0.22 deepspeed tensorboard"
@@ -441,6 +442,16 @@ ls -lh /models/hunyuan/ckpts/hunyuan-video-i2v-720p/transformers/mp_rank_00_mode
 ```
 
 如果你的权重在其他目录，把 `.env` 里的 `HUNYUAN_CKPT` 改成该目录；视频命令会通过 `--model-base` 传给 HunyuanVideo。
+
+缺失权重时，推荐显式运行下载脚本：
+
+```bash
+scripts/linux/setup_hunyuan_i2v.sh \
+  --root /workspace/HunyuanVideo-I2V \
+  --ckpt /models/hunyuan/ckpts
+```
+
+视频脚本默认不会自动下载大模型。确认磁盘空间充足后，也可以在 `input/config/project.yaml` 里把 `video_gen.auto_download_weights` 改成 `true`。
 
 ### 模型下载中断
 

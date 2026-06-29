@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import os
 import shlex
 import shutil
 import subprocess
@@ -164,6 +165,13 @@ def config_string(config: dict[str, Any], key: str, default: str = "") -> str:
     return value
 
 
+def config_bool(config: dict[str, Any], key: str, default: bool = False) -> bool:
+    value = str(config.get(key, "") or "").strip().lower()
+    if not value or "${" in value:
+        return default
+    return value in {"1", "true", "yes", "on"}
+
+
 def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger: logging.Logger) -> None:
     if str(video_gen.get("auto_install_deps", "true")).lower() in {"0", "false", "no"}:
         return
@@ -193,6 +201,49 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
     if extra_packages and missing:
         logger.info("Installing Hunyuan extra packages because modules are missing: %s", ", ".join(missing))
         run_command([python_bin, "-m", "pip", "install", *shlex.split(extra_packages)], logger, cwd=hunyuan_root)
+
+
+def ensure_hunyuan_i2v_weights(hunyuan_ckpt: Path, video_gen: dict[str, Any], logger: logging.Logger) -> None:
+    i2v_weight = hunyuan_ckpt / "hunyuan-video-i2v-720p" / "transformers" / "mp_rank_00_model_states.pt"
+    if i2v_weight.exists():
+        return
+
+    if not config_bool(video_gen, "auto_download_weights", False):
+        raise FileNotFoundError(
+            f"Hunyuan I2V weight missing: {i2v_weight}. "
+            "Download with: python3 -m pip install -U 'huggingface_hub[cli]' hf_transfer && "
+            f"HF_HUB_ENABLE_HF_TRANSFER=1 hf download tencent/HunyuanVideo-I2V --local-dir {shlex.quote(str(hunyuan_ckpt))}. "
+            "Or set video_gen.auto_download_weights=true after confirming disk space."
+        )
+
+    model_repo = config_string(video_gen, "model_repo", "tencent/HunyuanVideo-I2V")
+    hunyuan_ckpt.mkdir(parents=True, exist_ok=True)
+    run_command(["python3", "-m", "pip", "install", "-U", "huggingface_hub[cli]", "hf_transfer"], logger)
+    command = [
+        "hf",
+        "download",
+        model_repo,
+        "--local-dir",
+        str(hunyuan_ckpt),
+    ]
+    logger.info("Downloading missing Hunyuan I2V weights repo=%s target=%s", model_repo, hunyuan_ckpt)
+    env = os.environ.copy()
+    env["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+    result = subprocess.run(
+        command,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.stdout:
+        logger.info("download stdout: %s", result.stdout[-4000:])
+    if result.stderr:
+        logger.info("download stderr: %s", result.stderr[-4000:])
+    if result.returncode != 0:
+        raise RuntimeError(f"Hunyuan weight download failed exit={result.returncode}: {result.stderr[-2000:]}")
+    if not i2v_weight.exists():
+        raise FileNotFoundError(f"Hunyuan I2V download finished but expected weight is still missing: {i2v_weight}")
 
 
 def build_command(row: dict[str, str], video_gen: dict[str, Any], save_dir: Path) -> str:
@@ -243,14 +294,11 @@ def generate_video(row: dict[str, str], video_gen: dict[str, Any], logger: loggi
         raise FileNotFoundError(f"HUNYUAN_ROOT does not exist: {hunyuan_root}")
     ensure_hunyuan_runtime(hunyuan_root, video_gen, logger)
     hunyuan_ckpt = Path(str(video_gen.get("hunyuan_ckpt", "")))
-    i2v_weight = hunyuan_ckpt / "hunyuan-video-i2v-720p" / "transformers" / "mp_rank_00_model_states.pt"
-    if "${" in str(hunyuan_ckpt) or not hunyuan_ckpt.exists():
+    if "${" in str(hunyuan_ckpt):
         raise FileNotFoundError(f"HUNYUAN_CKPT does not exist or is not configured: {hunyuan_ckpt}")
-    if not i2v_weight.exists():
-        raise FileNotFoundError(
-            f"Hunyuan I2V weight missing: {i2v_weight}. "
-            "Download the HunyuanVideo-I2V weights to HUNYUAN_CKPT or pass the correct --hunyuan-ckpt path."
-        )
+    if not hunyuan_ckpt.exists() and not config_bool(video_gen, "auto_download_weights", False):
+        raise FileNotFoundError(f"HUNYUAN_CKPT does not exist or is not configured: {hunyuan_ckpt}")
+    ensure_hunyuan_i2v_weights(hunyuan_ckpt, video_gen, logger)
 
     save_dir = ROOT / "temp" / "hunyuan" / output_video.stem
     save_dir.mkdir(parents=True, exist_ok=True)

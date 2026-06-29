@@ -31,6 +31,8 @@ video_gen:
   motion_levels: [low, medium]
   hunyuan_root: ${HUNYUAN_ROOT}
   hunyuan_ckpt: ${HUNYUAN_CKPT}
+  model_repo: ${HUNYUAN_MODEL_REPO}
+  auto_download_weights: false
   model_dir: ${MODEL_DIR}
   required_modules: ${HUNYUAN_REQUIRED_MODULES}
   force_pip_packages: ${HUNYUAN_FORCE_PIP_PACKAGES}

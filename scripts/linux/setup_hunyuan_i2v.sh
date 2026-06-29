@@ -107,6 +107,11 @@ has_model_files() {
     | grep -q .
 }
 
+has_hunyuan_i2v_weight() {
+  local path="$1"
+  [[ -f "$path/hunyuan-video-i2v-720p/transformers/mp_rank_00_model_states.pt" ]]
+}
+
 install_hunyuan_requirements() {
   local requirements_path="$HUNYUAN_ROOT/requirements.txt"
   local compat_path="/tmp/hunyuan_requirements_compat.txt"
@@ -164,10 +169,15 @@ fi
 
 if [[ "$NO_MODEL" -eq 0 ]]; then
   mkdir -p "$HUNYUAN_CKPT"
-  if [[ "$FORCE_MODEL_DOWNLOAD" -eq 0 ]] && has_model_files "$HUNYUAN_CKPT"; then
-    echo "Hunyuan model files already exist, skipping model download: $HUNYUAN_CKPT"
+  if [[ "$FORCE_MODEL_DOWNLOAD" -eq 0 ]] && has_hunyuan_i2v_weight "$HUNYUAN_CKPT"; then
+    echo "Hunyuan I2V weight already exists, skipping model download: $HUNYUAN_CKPT"
     echo "Use --force-model-download to force Hugging Face download/resume."
   else
+    if has_model_files "$HUNYUAN_CKPT"; then
+      echo "Some Hunyuan model files exist, but required I2V weight is missing:"
+      echo "  $HUNYUAN_CKPT/hunyuan-video-i2v-720p/transformers/mp_rank_00_model_states.pt"
+      echo "Running Hugging Face download/resume."
+    fi
     export HF_HUB_ENABLE_HF_TRANSFER=1
     hf_args=(download "$HUNYUAN_MODEL_REPO" --local-dir "$HUNYUAN_CKPT")
     if [[ -n "$HF_TOKEN" ]]; then
