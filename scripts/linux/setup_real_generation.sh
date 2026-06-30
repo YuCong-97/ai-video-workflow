@@ -158,6 +158,8 @@ fi
 python3 - "$PROJECT_DIR/.env" "$COMFYUI_URL" "$HUNYUAN_ROOT" "$HUNYUAN_CKPT" "$PORT" \
   "$COMFYUI_CKPT_URL" "$COMFYUI_CKPT_PATH" "$COMFYUI_CKPT_NAME" <<'PY'
 from pathlib import Path
+import re
+import shlex
 import sys
 
 path = Path(sys.argv[1])
@@ -175,19 +177,29 @@ optional_values = {
     "HUNYUAN_TORCH_PACKAGES": "torch torchvision torchaudio",
 }
 values.update({key: value for key, value in optional_values.items() if value})
+
+
+def format_env_value(raw: str) -> str:
+    if raw == "":
+        return ""
+    if re.fullmatch(r"[A-Za-z0-9_./:@%+=,~-]+", raw):
+        return raw
+    return shlex.quote(raw)
+
+
 lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
 out = []
 seen = set()
 for line in lines:
     key = line.split("=", 1)[0].strip()
     if key in values:
-        out.append(f"{key}={values[key]}")
+        out.append(f"{key}={format_env_value(values[key])}")
         seen.add(key)
     else:
         out.append(line)
 for key, value in values.items():
     if key not in seen:
-        out.append(f"{key}={value}")
+        out.append(f"{key}={format_env_value(value)}")
 path.write_text("\n".join(out) + "\n", encoding="utf-8")
 PY
 

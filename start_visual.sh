@@ -248,12 +248,24 @@ set_env_value() {
 
   "$PYTHON_BIN" - "$file" "$key" "$value" <<'PY'
 from pathlib import Path
+import re
+import shlex
 import sys
 
 path = Path(sys.argv[1])
 key = sys.argv[2]
 value = sys.argv[3]
-line = f"{key}={value}"
+
+
+def format_env_value(raw: str) -> str:
+    if raw == "":
+        return ""
+    if re.fullmatch(r"[A-Za-z0-9_./:@%+=,~-]+", raw):
+        return raw
+    return shlex.quote(raw)
+
+
+line = f"{key}={format_env_value(value)}"
 
 lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
 written = False
@@ -309,13 +321,8 @@ if [[ -n "$HUNYUAN_CKPT_ARG" ]]; then
   set_env_value "HUNYUAN_CKPT" "$HUNYUAN_CKPT_ARG"
 fi
 
-if ! grep -q '^HUNYUAN_TORCH_INDEX_URL=' .env 2>/dev/null; then
-  set_env_value "HUNYUAN_TORCH_INDEX_URL" "$DEFAULT_HUNYUAN_TORCH_INDEX_URL"
-fi
-
-if ! grep -q '^HUNYUAN_TORCH_PACKAGES=' .env 2>/dev/null; then
-  set_env_value "HUNYUAN_TORCH_PACKAGES" "$DEFAULT_HUNYUAN_TORCH_PACKAGES"
-fi
+set_env_value "HUNYUAN_TORCH_INDEX_URL" "$DEFAULT_HUNYUAN_TORCH_INDEX_URL"
+set_env_value "HUNYUAN_TORCH_PACKAGES" "$DEFAULT_HUNYUAN_TORCH_PACKAGES"
 
 set -a
 # shellcheck disable=SC1091
