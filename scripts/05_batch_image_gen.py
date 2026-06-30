@@ -98,6 +98,7 @@ def row_matches(row: dict[str, str], args: argparse.Namespace) -> bool:
 
 
 def apply_workflow_placeholders(workflow: dict[str, Any], row: dict[str, str], image_gen: dict[str, Any]) -> dict[str, Any]:
+    configured_ckpt = str(image_gen.get("ckpt_name", "")).strip()
     replacements = {
         "__PROMPT__": row.get("prompt", ""),
         "__NEGATIVE_PROMPT__": row.get("negative_prompt", ""),
@@ -107,6 +108,8 @@ def apply_workflow_placeholders(workflow: dict[str, Any], row: dict[str, str], i
         "__SHOT_ID__": row.get("shot_id", ""),
         "__OUTPUT_PREFIX__": Path(row.get("output_image", "output.png")).stem,
     }
+    if configured_ckpt and "${" not in configured_ckpt:
+        replacements["__CKPT_NAME__"] = configured_ckpt
 
     def replace_value(value: Any) -> Any:
         if isinstance(value, str):
@@ -140,6 +143,66 @@ def validate_comfyui_api_workflow(workflow: dict[str, Any], workflow_path: Path)
         raise ValueError(
             f"Invalid ComfyUI API workflow: {workflow_path}. "
             "The file should be the API-format JSON exported from ComfyUI and contain nodes with class_type/inputs."
+        )
+
+
+def get_workflow_checkpoint_names(workflow: dict[str, Any], image_gen: dict[str, Any]) -> list[str]:
+    configured_ckpt = str(image_gen.get("ckpt_name", "")).strip()
+    names: list[str] = []
+    for node in workflow.values():
+        if not isinstance(node, dict) or node.get("class_type") != "CheckpointLoaderSimple":
+            continue
+        inputs = node.get("inputs", {})
+        if not isinstance(inputs, dict):
+            continue
+        ckpt_name = str(inputs.get("ckpt_name", "")).strip()
+        if ckpt_name == "__CKPT_NAME__":
+            ckpt_name = configured_ckpt
+        if ckpt_name and "${" not in ckpt_name:
+            names.append(ckpt_name)
+    return sorted(set(names))
+
+
+def get_available_comfyui_checkpoints(url: str) -> list[str]:
+    response = requests.get(f"{url}/object_info/CheckpointLoaderSimple", timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    node_info = data.get("CheckpointLoaderSimple", data)
+    input_info = node_info.get("input", {}) if isinstance(node_info, dict) else {}
+    required = input_info.get("required", {}) if isinstance(input_info, dict) else {}
+    ckpt_config = required.get("ckpt_name", []) if isinstance(required, dict) else []
+    if isinstance(ckpt_config, list) and ckpt_config and isinstance(ckpt_config[0], list):
+        return [str(item) for item in ckpt_config[0]]
+    return []
+
+
+def ensure_workflow_models_available(
+    url: str,
+    workflow_path: Path,
+    image_gen: dict[str, Any],
+    logger: logging.Logger,
+) -> None:
+    workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+    validate_comfyui_api_workflow(workflow, workflow_path)
+    required_checkpoints = get_workflow_checkpoint_names(workflow, image_gen)
+    if not required_checkpoints:
+        return
+
+    available_checkpoints = get_available_comfyui_checkpoints(url)
+    missing = [name for name in required_checkpoints if name not in available_checkpoints]
+    if missing:
+        available_preview = ", ".join(available_checkpoints[:20]) if available_checkpoints else "<none>"
+        logger.error(
+            "ComfyUI checkpoint preflight failed. required=%s available=%s",
+            ", ".join(missing),
+            available_preview,
+        )
+        raise RuntimeError(
+            "ComfyUI checkpoint missing. "
+            f"Workflow requires: {', '.join(missing)}. "
+            f"Available checkpoints: {available_preview}. "
+            "Put the model file under ComfyUI/models/checkpoints, restart ComfyUI, "
+            "or update input/config/comfyui_workflow_api.json to use an installed checkpoint."
         )
 
 
@@ -244,8 +307,9 @@ def main() -> None:
 
     if not args.dry_run:
         try:
-            url, _, _ = require_comfyui_config(image_gen)
+            url, workflow_path, _ = require_comfyui_config(image_gen)
             ensure_comfyui_reachable(url, logger)
+            ensure_workflow_models_available(url, workflow_path, image_gen, logger)
         except Exception as exc:
             logger.error("Image generation preflight failed: %s", exc)
             raise SystemExit(1) from exc

@@ -192,6 +192,37 @@ def is_comfyui_reachable(comfyui_url: str, timeout_sec: int = 5) -> bool:
         return False
 
 
+def get_workflow_checkpoint_names(workflow_path: Path, image_gen: dict) -> list[str]:
+    workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+    configured_ckpt = str(image_gen.get("ckpt_name", "")).strip()
+    names: list[str] = []
+    for node in workflow.values():
+        if not isinstance(node, dict) or node.get("class_type") != "CheckpointLoaderSimple":
+            continue
+        inputs = node.get("inputs", {})
+        if not isinstance(inputs, dict):
+            continue
+        ckpt_name = str(inputs.get("ckpt_name", "")).strip()
+        if ckpt_name == "__CKPT_NAME__":
+            ckpt_name = configured_ckpt
+        if ckpt_name and "${" not in ckpt_name:
+            names.append(ckpt_name)
+    return sorted(set(names))
+
+
+def get_available_comfyui_checkpoints(comfyui_url: str) -> list[str]:
+    response = requests.get(f"{comfyui_url.rstrip('/')}/object_info/CheckpointLoaderSimple", timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    node_info = data.get("CheckpointLoaderSimple", data)
+    input_info = node_info.get("input", {}) if isinstance(node_info, dict) else {}
+    required = input_info.get("required", {}) if isinstance(input_info, dict) else {}
+    ckpt_config = required.get("ckpt_name", []) if isinstance(required, dict) else []
+    if isinstance(ckpt_config, list) and ckpt_config and isinstance(ckpt_config[0], list):
+        return [str(item) for item in ckpt_config[0]]
+    return []
+
+
 def read_tail(path: Path, max_lines: int = 80) -> str:
     if not path.exists():
         return ""
@@ -404,6 +435,23 @@ def validate_real_generation_config(project_config: dict, logger: logging.Logger
         errors.extend(start_comfyui_if_needed(comfyui_url, logger))
     if not workflow_path.exists():
         errors.append(f"ComfyUI API workflow does not exist: {workflow_path}")
+    elif comfyui_url and "${" not in comfyui_url and not errors:
+        try:
+            required_checkpoints = get_workflow_checkpoint_names(workflow_path, image_gen)
+            if required_checkpoints:
+                available_checkpoints = get_available_comfyui_checkpoints(comfyui_url)
+                missing = [name for name in required_checkpoints if name not in available_checkpoints]
+                if missing:
+                    available_preview = ", ".join(available_checkpoints[:20]) if available_checkpoints else "<none>"
+                    errors.append(
+                        "ComfyUI checkpoint missing. "
+                        f"Workflow requires: {', '.join(missing)}. "
+                        f"Available checkpoints: {available_preview}. "
+                        "Put the model under ComfyUI/models/checkpoints and restart ComfyUI, "
+                        "or export a workflow that uses an installed checkpoint."
+                    )
+        except Exception as exc:
+            errors.append(f"Could not validate ComfyUI checkpoint: {exc}")
     if not hunyuan_root or not hunyuan_root.exists():
         errors.append(f"HUNYUAN_ROOT does not exist: {hunyuan_root_raw or '<empty>'}")
     elif not (hunyuan_root / "sample_image2video.py").exists():
