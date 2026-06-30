@@ -173,6 +173,8 @@ optional_values = {
     "COMFYUI_CKPT_URL": sys.argv[6],
     "COMFYUI_CKPT_PATH": sys.argv[7],
     "COMFYUI_CKPT_NAME": sys.argv[8],
+    "HUNYUAN_TEXT_ENCODER_REPO": "xtuner/llava-llama-3-8b-v1_1-transformers",
+    "HUNYUAN_CLIP_REPO": "openai/clip-vit-large-patch14",
     "HUNYUAN_TORCH_INDEX_URL": "https://download.pytorch.org/whl/cu124",
     "HUNYUAN_TORCH_PACKAGES": "torch torchvision torchaudio",
 }

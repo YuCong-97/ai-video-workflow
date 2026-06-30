@@ -276,49 +276,55 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
 def ensure_hunyuan_i2v_weights(hunyuan_ckpt: Path, video_gen: dict[str, Any], logger: logging.Logger) -> None:
     i2v_weight = hunyuan_ckpt / "hunyuan-video-i2v-720p" / "transformers" / "mp_rank_00_model_states.pt"
     i2v_vae_config = i2v_vae_config_path(hunyuan_ckpt)
-    if i2v_weight.exists() and i2v_vae_config.exists():
+    text_encoder_config = text_encoder_i2v_config_path(hunyuan_ckpt)
+    clip_encoder_config = text_encoder_2_config_path(hunyuan_ckpt)
+    expected_files = [i2v_weight, i2v_vae_config, text_encoder_config, clip_encoder_config]
+    if all(path.exists() for path in expected_files):
         return
 
     if not config_bool(video_gen, "auto_download_weights", False):
         raise FileNotFoundError(
-            f"Hunyuan I2V files missing: {i2v_weight}, {i2v_vae_config}. "
+            "Hunyuan I2V files missing: "
+            + ", ".join(str(path) for path in expected_files if not path.exists())
+            + ". "
             "Download with: python3 -m pip install -U 'huggingface_hub[cli]' hf_transfer && "
             f"HF_HUB_ENABLE_HF_TRANSFER=1 hf download tencent/HunyuanVideo-I2V --local-dir {shlex.quote(str(hunyuan_ckpt))}. "
             "Or set video_gen.auto_download_weights=true after confirming disk space."
         )
 
     model_repo = config_string(video_gen, "model_repo", "tencent/HunyuanVideo-I2V")
+    text_encoder_repo = config_string(video_gen, "text_encoder_repo", "xtuner/llava-llama-3-8b-v1_1-transformers")
+    clip_repo = config_string(video_gen, "clip_repo", "openai/clip-vit-large-patch14")
     hunyuan_ckpt.mkdir(parents=True, exist_ok=True)
     run_command(["python3", "-m", "pip", "install", "-U", "huggingface_hub[cli]", "hf_transfer"], logger)
-    command = [
-        "hf",
-        "download",
-        model_repo,
-        "--local-dir",
-        str(hunyuan_ckpt),
-    ]
-    logger.info("Downloading missing Hunyuan I2V weights repo=%s target=%s", model_repo, hunyuan_ckpt)
-    env = os.environ.copy()
-    env["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
-    result = subprocess.run(
-        command,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.stdout:
-        logger.info("download stdout: %s", result.stdout[-4000:])
-    if result.stderr:
-        logger.info("download stderr: %s", result.stderr[-4000:])
-    if result.returncode != 0:
-        raise RuntimeError(f"Hunyuan weight download failed exit={result.returncode}: {result.stderr[-2000:]}")
-    missing = [path for path in [i2v_weight, i2v_vae_config] if not path.exists()]
+
+    if not i2v_weight.exists() or not i2v_vae_config.exists():
+        download_hf_repo(model_repo, hunyuan_ckpt, logger)
+    if not text_encoder_config.exists():
+        download_hf_repo(text_encoder_repo, hunyuan_ckpt / "text_encoder_i2v", logger)
+    if not clip_encoder_config.exists():
+        download_hf_repo(clip_repo, hunyuan_ckpt / "text_encoder_2", logger)
+
+    missing = [path for path in expected_files if not path.exists()]
     if missing:
         raise FileNotFoundError(
             "Hunyuan I2V download finished but expected files are still missing: "
             + ", ".join(str(path) for path in missing)
         )
+
+
+def download_hf_repo(repo_id: str, target_dir: Path, logger: logging.Logger) -> None:
+    command = ["hf", "download", repo_id, "--local-dir", str(target_dir)]
+    logger.info("Downloading Hugging Face repo=%s target=%s", repo_id, target_dir)
+    env = os.environ.copy()
+    env["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+    result = subprocess.run(command, env=env, capture_output=True, text=True, check=False)
+    if result.stdout:
+        logger.info("download stdout: %s", result.stdout[-4000:])
+    if result.stderr:
+        logger.info("download stderr: %s", result.stderr[-4000:])
+    if result.returncode != 0:
+        raise RuntimeError(f"Hugging Face download failed repo={repo_id} exit={result.returncode}: {result.stderr[-2000:]}")
 
 
 def i2v_weight_path(hunyuan_ckpt: Path) -> Path:
@@ -327,6 +333,14 @@ def i2v_weight_path(hunyuan_ckpt: Path) -> Path:
 
 def i2v_vae_config_path(hunyuan_ckpt: Path) -> Path:
     return hunyuan_ckpt / "hunyuan-video-i2v-720p" / "vae" / "config.json"
+
+
+def text_encoder_i2v_config_path(hunyuan_ckpt: Path) -> Path:
+    return hunyuan_ckpt / "text_encoder_i2v" / "config.json"
+
+
+def text_encoder_2_config_path(hunyuan_ckpt: Path) -> Path:
+    return hunyuan_ckpt / "text_encoder_2" / "config.json"
 
 
 def resolve_hunyuan_root(configured: Path, logger: logging.Logger) -> Path:
@@ -362,7 +376,12 @@ def detect_hunyuan_ckpt(configured: Path, hunyuan_root: Path, logger: logging.Lo
 
 def ensure_hunyuan_ckpt_symlink(hunyuan_root: Path, hunyuan_ckpt: Path, logger: logging.Logger) -> None:
     link_path = hunyuan_root / "ckpts"
-    required_paths = [i2v_weight_path(hunyuan_ckpt), i2v_vae_config_path(hunyuan_ckpt)]
+    required_paths = [
+        i2v_weight_path(hunyuan_ckpt),
+        i2v_vae_config_path(hunyuan_ckpt),
+        text_encoder_i2v_config_path(hunyuan_ckpt),
+        text_encoder_2_config_path(hunyuan_ckpt),
+    ]
     missing_required = [path for path in required_paths if not path.exists()]
     if missing_required:
         raise FileNotFoundError(
@@ -383,7 +402,12 @@ def ensure_hunyuan_ckpt_symlink(hunyuan_root: Path, hunyuan_ckpt: Path, logger: 
         link_path.symlink_to(hunyuan_ckpt, target_is_directory=True)
         return
 
-    if i2v_weight_path(link_path).exists() and i2v_vae_config_path(link_path).exists():
+    if all(path.exists() for path in [
+        i2v_weight_path(link_path),
+        i2v_vae_config_path(link_path),
+        text_encoder_i2v_config_path(link_path),
+        text_encoder_2_config_path(link_path),
+    ]):
         return
 
     backup_path = hunyuan_root / f"ckpts.local_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"

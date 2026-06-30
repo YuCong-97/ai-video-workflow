@@ -5,6 +5,8 @@ HUNYUAN_ROOT="${HUNYUAN_ROOT:-/workspace/HunyuanVideo-I2V}"
 HUNYUAN_REPO_URL="${HUNYUAN_REPO_URL:-https://github.com/Tencent-Hunyuan/HunyuanVideo-I2V.git}"
 HUNYUAN_CKPT="${HUNYUAN_CKPT:-/models/hunyuan/ckpts}"
 HUNYUAN_MODEL_REPO="${HUNYUAN_MODEL_REPO:-tencent/HunyuanVideo-I2V}"
+HUNYUAN_TEXT_ENCODER_REPO="${HUNYUAN_TEXT_ENCODER_REPO:-xtuner/llava-llama-3-8b-v1_1-transformers}"
+HUNYUAN_CLIP_REPO="${HUNYUAN_CLIP_REPO:-openai/clip-vit-large-patch14}"
 HUNYUAN_TORCH_INDEX_URL="${HUNYUAN_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
 HUNYUAN_TORCH_PACKAGES="${HUNYUAN_TORCH_PACKAGES:-torch torchvision torchaudio}"
 
@@ -30,13 +32,16 @@ Options:
   --ckpt PATH             Model checkpoint directory. Default: /models/hunyuan/ckpts
   --repo URL              Git repository URL.
   --model-repo HF_ID      Hugging Face model repo. Default: tencent/HunyuanVideo-I2V
+  --text-encoder-repo ID  MLLM text encoder repo. Default: xtuner/llava-llama-3-8b-v1_1-transformers
+  --clip-repo ID          CLIP text encoder repo. Default: openai/clip-vit-large-patch14
   --no-model              Clone/install code only; skip model download.
   --no-install            Clone/download only; skip pip install.
   --update-code           Pull latest code when repository already exists.
   --force-model-download  Run Hugging Face download even if model files exist.
 
 Environment:
-  HUNYUAN_ROOT, HUNYUAN_CKPT, HUNYUAN_REPO_URL, HUNYUAN_MODEL_REPO, HF_TOKEN,
+  HUNYUAN_ROOT, HUNYUAN_CKPT, HUNYUAN_REPO_URL, HUNYUAN_MODEL_REPO,
+  HUNYUAN_TEXT_ENCODER_REPO, HUNYUAN_CLIP_REPO, HF_TOKEN,
   HUNYUAN_TORCH_INDEX_URL, HUNYUAN_TORCH_PACKAGES
 
 Notes:
@@ -60,6 +65,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --model-repo)
       HUNYUAN_MODEL_REPO="${2:?Missing value for --model-repo}"
+      shift 2
+      ;;
+    --text-encoder-repo)
+      HUNYUAN_TEXT_ENCODER_REPO="${2:?Missing value for --text-encoder-repo}"
+      shift 2
+      ;;
+    --clip-repo)
+      HUNYUAN_CLIP_REPO="${2:?Missing value for --clip-repo}"
       shift 2
       ;;
     --no-model)
@@ -120,14 +133,51 @@ has_hunyuan_i2v_vae() {
   [[ -f "$path/hunyuan-video-i2v-720p/vae/config.json" ]]
 }
 
+has_hunyuan_text_encoder() {
+  local path="$1"
+  [[ -f "$path/text_encoder_i2v/config.json" ]]
+}
+
+has_hunyuan_clip_encoder() {
+  local path="$1"
+  [[ -f "$path/text_encoder_2/config.json" ]]
+}
+
+hf_download_repo() {
+  local repo="$1"
+  local target="$2"
+  export HF_HUB_ENABLE_HF_TRANSFER=1
+  hf_args=(download "$repo" --local-dir "$target")
+  if [[ -n "$HF_TOKEN" ]]; then
+    hf_args+=(--token "$HF_TOKEN")
+  fi
+  if command -v hf >/dev/null 2>&1; then
+    hf "${hf_args[@]}"
+  elif command -v huggingface-cli >/dev/null 2>&1; then
+    huggingface-cli "${hf_args[@]}"
+  else
+    python3 - "$repo" "$target" "$HF_TOKEN" <<'PY'
+from huggingface_hub import snapshot_download
+import sys
+
+repo_id = sys.argv[1]
+local_dir = sys.argv[2]
+token = sys.argv[3] or None
+snapshot_download(repo_id=repo_id, local_dir=local_dir, token=token)
+PY
+  fi
+}
+
 ensure_local_ckpts_link() {
   local link_path="$HUNYUAN_ROOT/ckpts"
   local backup_path=""
 
-  if ! has_hunyuan_i2v_weight "$HUNYUAN_CKPT" || ! has_hunyuan_i2v_vae "$HUNYUAN_CKPT"; then
+  if ! has_hunyuan_i2v_weight "$HUNYUAN_CKPT" || ! has_hunyuan_i2v_vae "$HUNYUAN_CKPT" || ! has_hunyuan_text_encoder "$HUNYUAN_CKPT" || ! has_hunyuan_clip_encoder "$HUNYUAN_CKPT"; then
     echo "Hunyuan checkpoint directory is incomplete:"
     echo "  expected weight: $HUNYUAN_CKPT/hunyuan-video-i2v-720p/transformers/mp_rank_00_model_states.pt"
     echo "  expected VAE config: $HUNYUAN_CKPT/hunyuan-video-i2v-720p/vae/config.json"
+    echo "  expected MLLM config: $HUNYUAN_CKPT/text_encoder_i2v/config.json"
+    echo "  expected CLIP config: $HUNYUAN_CKPT/text_encoder_2/config.json"
     return 1
   fi
 
@@ -144,7 +194,7 @@ ensure_local_ckpts_link() {
     return 0
   fi
 
-  if has_hunyuan_i2v_weight "$link_path" && has_hunyuan_i2v_vae "$link_path"; then
+  if has_hunyuan_i2v_weight "$link_path" && has_hunyuan_i2v_vae "$link_path" && has_hunyuan_text_encoder "$link_path" && has_hunyuan_clip_encoder "$link_path"; then
     return 0
   fi
 
@@ -239,7 +289,7 @@ fi
 if [[ "$NO_MODEL" -eq 0 ]]; then
   mkdir -p "$HUNYUAN_CKPT"
   if [[ "$FORCE_MODEL_DOWNLOAD" -eq 0 ]] && has_hunyuan_i2v_weight "$HUNYUAN_CKPT" && has_hunyuan_i2v_vae "$HUNYUAN_CKPT"; then
-    echo "Hunyuan I2V weight already exists, skipping model download: $HUNYUAN_CKPT"
+    echo "Hunyuan I2V base files already exist, skipping base model download: $HUNYUAN_CKPT"
     echo "Use --force-model-download to force Hugging Face download/resume."
   else
     if has_model_files "$HUNYUAN_CKPT"; then
@@ -248,26 +298,21 @@ if [[ "$NO_MODEL" -eq 0 ]]; then
       echo "  $HUNYUAN_CKPT/hunyuan-video-i2v-720p/vae/config.json"
       echo "Running Hugging Face download/resume."
     fi
-    export HF_HUB_ENABLE_HF_TRANSFER=1
-    hf_args=(download "$HUNYUAN_MODEL_REPO" --local-dir "$HUNYUAN_CKPT")
-    if [[ -n "$HF_TOKEN" ]]; then
-      hf_args+=(--token "$HF_TOKEN")
-    fi
-    if command -v hf >/dev/null 2>&1; then
-      hf "${hf_args[@]}"
-    elif command -v huggingface-cli >/dev/null 2>&1; then
-      huggingface-cli "${hf_args[@]}"
-    else
-      python3 - "$HUNYUAN_MODEL_REPO" "$HUNYUAN_CKPT" "$HF_TOKEN" <<'PY'
-from huggingface_hub import snapshot_download
-import sys
+    hf_download_repo "$HUNYUAN_MODEL_REPO" "$HUNYUAN_CKPT"
+  fi
 
-repo_id = sys.argv[1]
-local_dir = sys.argv[2]
-token = sys.argv[3] or None
-snapshot_download(repo_id=repo_id, local_dir=local_dir, token=token)
-PY
-    fi
+  if [[ "$FORCE_MODEL_DOWNLOAD" -eq 0 ]] && has_hunyuan_text_encoder "$HUNYUAN_CKPT"; then
+    echo "Hunyuan MLLM text encoder already exists, skipping: $HUNYUAN_CKPT/text_encoder_i2v"
+  else
+    echo "Downloading Hunyuan MLLM text encoder: $HUNYUAN_TEXT_ENCODER_REPO"
+    hf_download_repo "$HUNYUAN_TEXT_ENCODER_REPO" "$HUNYUAN_CKPT/text_encoder_i2v"
+  fi
+
+  if [[ "$FORCE_MODEL_DOWNLOAD" -eq 0 ]] && has_hunyuan_clip_encoder "$HUNYUAN_CKPT"; then
+    echo "Hunyuan CLIP text encoder already exists, skipping: $HUNYUAN_CKPT/text_encoder_2"
+  else
+    echo "Downloading Hunyuan CLIP text encoder: $HUNYUAN_CLIP_REPO"
+    hf_download_repo "$HUNYUAN_CLIP_REPO" "$HUNYUAN_CKPT/text_encoder_2"
   fi
 fi
 

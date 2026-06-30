@@ -32,6 +32,8 @@ video_gen:
   hunyuan_root: ${HUNYUAN_ROOT}
   hunyuan_ckpt: ${HUNYUAN_CKPT}
   model_repo: ${HUNYUAN_MODEL_REPO}
+  text_encoder_repo: ${HUNYUAN_TEXT_ENCODER_REPO}
+  clip_repo: ${HUNYUAN_CLIP_REPO}
   auto_download_weights: false
   model_dir: ${MODEL_DIR}
   required_modules: ${HUNYUAN_REQUIRED_MODULES}
