@@ -4,6 +4,7 @@ import argparse
 import csv
 import logging
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -142,6 +143,28 @@ def run_command(command: list[str], logger: logging.Logger, cwd: Path | None = N
         raise RuntimeError(f"Setup command failed exit={result.returncode}: {result.stderr[-2000:]}")
 
 
+def compatible_requirements_path(requirements: Path, logger: logging.Logger) -> Path:
+    compat_dir = ROOT / "temp"
+    compat_dir.mkdir(parents=True, exist_ok=True)
+    compat_path = compat_dir / "hunyuan_requirements_compat.txt"
+    skipped: list[str] = []
+    output: list[str] = []
+    for line in requirements.read_text(encoding="utf-8").splitlines():
+        normalized = line.strip().lower()
+        package_name = re.split(r"[<>=!~;\[\s]", normalized, maxsplit=1)[0]
+        if package_name == "tokenizers" and "==0.15.0" in normalized:
+            skipped.append(line)
+            continue
+        output.append(line)
+    compat_path.write_text("\n".join(output) + "\n", encoding="utf-8")
+    if skipped:
+        logger.info(
+            "Using compatible Hunyuan requirements, skipped old tokenizers pin(s): %s",
+            "; ".join(skipped),
+        )
+    return compat_path
+
+
 def has_python_module(module: str, python_bin: str, cwd: Path, logger: logging.Logger) -> bool:
     result = subprocess.run(
         [python_bin, "-c", f"import {module}"],
@@ -192,7 +215,11 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
 
     if requirements.exists() and missing:
         logger.info("Installing Hunyuan requirements because modules are missing: %s", ", ".join(missing))
-        run_command([python_bin, "-m", "pip", "install", "-r", str(requirements)], logger, cwd=hunyuan_root)
+        run_command(
+            [python_bin, "-m", "pip", "install", "-r", str(compatible_requirements_path(requirements, logger))],
+            logger,
+            cwd=hunyuan_root,
+        )
 
     default_extra = (
         "loguru imageio imageio-ffmpeg diffusers==0.31.0 "
@@ -252,6 +279,14 @@ def i2v_weight_path(hunyuan_ckpt: Path) -> Path:
     return hunyuan_ckpt / "hunyuan-video-i2v-720p" / "transformers" / "mp_rank_00_model_states.pt"
 
 
+def resolve_hunyuan_root(configured: Path, logger: logging.Logger) -> Path:
+    preferred = Path("/workspace/HunyuanVideo-I2V")
+    if str(configured) == "/workspace/HunyuanVideo-1.5" and (preferred / "sample_image2video.py").exists():
+        logger.info("Using preferred Hunyuan I2V root instead of legacy path: %s", preferred)
+        return preferred
+    return configured
+
+
 def detect_hunyuan_ckpt(configured: Path, hunyuan_root: Path, logger: logging.Logger) -> Path:
     candidates = [
         configured,
@@ -302,7 +337,7 @@ def ensure_hunyuan_ckpt_symlink(hunyuan_root: Path, hunyuan_ckpt: Path, logger: 
 def build_command(row: dict[str, str], video_gen: dict[str, Any], save_dir: Path) -> str:
     image = resolve_path(row["output_image"])
     output = resolve_path(row["output_video"])
-    hunyuan_root = Path(str(video_gen.get("hunyuan_root", "")))
+    hunyuan_root = resolve_hunyuan_root(Path(str(video_gen.get("hunyuan_root", ""))), logging.getLogger("batch_video_gen"))
     hunyuan_ckpt = detect_hunyuan_ckpt(Path(str(video_gen.get("hunyuan_ckpt", ""))), hunyuan_root, logging.getLogger("batch_video_gen"))
     values = {
         "prompt": row.get("prompt", ""),
@@ -345,7 +380,7 @@ def generate_video(row: dict[str, str], video_gen: dict[str, Any], logger: loggi
     if not image.exists():
         raise FileNotFoundError(f"Keyframe image missing: {image}")
 
-    hunyuan_root = Path(str(video_gen.get("hunyuan_root", "")))
+    hunyuan_root = resolve_hunyuan_root(Path(str(video_gen.get("hunyuan_root", ""))), logger)
     if not hunyuan_root.exists():
         raise FileNotFoundError(f"HUNYUAN_ROOT does not exist: {hunyuan_root}")
     ensure_hunyuan_runtime(hunyuan_root, video_gen, logger)
