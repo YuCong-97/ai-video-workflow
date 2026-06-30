@@ -11,6 +11,9 @@ COMFYUI_TORCH_INDEX_URL="${COMFYUI_TORCH_INDEX_URL:-https://download.pytorch.org
 COMFYUI_NUMPY_PACKAGE="${COMFYUI_NUMPY_PACKAGE:-numpy>=1.26,<3}"
 WORKFLOW_URL="${WORKFLOW_URL:-}"
 WORKFLOW_PATH="${WORKFLOW_PATH:-}"
+COMFYUI_CKPT_URL="${COMFYUI_CKPT_URL:-}"
+COMFYUI_CKPT_PATH="${COMFYUI_CKPT_PATH:-}"
+COMFYUI_CKPT_NAME="${COMFYUI_CKPT_NAME:-}"
 PROJECT_DIR="${PROJECT_DIR:-$(pwd)}"
 TARGET_WORKFLOW="${TARGET_WORKFLOW:-$PROJECT_DIR/input/config/comfyui_workflow_api.json}"
 NO_MANAGER=0
@@ -26,6 +29,9 @@ Options:
   --dir PATH              ComfyUI install directory. Default: /workspace/ComfyUI
   --workflow-url URL      Download API workflow JSON from URL.
   --workflow PATH         Copy local API workflow JSON.
+  --ckpt-url URL          Download a checkpoint into ComfyUI/models/checkpoints.
+  --ckpt-path PATH        Copy an existing checkpoint into ComfyUI/models/checkpoints.
+  --ckpt-name NAME        Target checkpoint filename. Defaults to source basename.
   --target PATH           Target workflow path. Default: input/config/comfyui_workflow_api.json
   --no-manager            Do not install ComfyUI-Manager.
   --no-install            Clone/copy only; skip pip install.
@@ -34,7 +40,7 @@ Options:
 Environment:
   COMFYUI_DIR, COMFYUI_REPO_URL, COMFYUI_MANAGER_REPO_URL, COMFYUI_EXTRA_PIP_PACKAGES,
   COMFYUI_PYTHON_BIN, COMFYUI_TORCH_PACKAGES, COMFYUI_TORCH_INDEX_URL, COMFYUI_NUMPY_PACKAGE,
-  WORKFLOW_URL, WORKFLOW_PATH
+  WORKFLOW_URL, WORKFLOW_PATH, COMFYUI_CKPT_URL, COMFYUI_CKPT_PATH, COMFYUI_CKPT_NAME
 EOF
 }
 
@@ -50,6 +56,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --workflow)
       WORKFLOW_PATH="${2:?Missing value for --workflow}"
+      shift 2
+      ;;
+    --ckpt-url)
+      COMFYUI_CKPT_URL="${2:?Missing value for --ckpt-url}"
+      shift 2
+      ;;
+    --ckpt-path)
+      COMFYUI_CKPT_PATH="${2:?Missing value for --ckpt-path}"
+      shift 2
+      ;;
+    --ckpt-name)
+      COMFYUI_CKPT_NAME="${2:?Missing value for --ckpt-name}"
       shift 2
       ;;
     --target)
@@ -79,6 +97,60 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+source_basename() {
+  local source="$1"
+  source="${source%%\?*}"
+  basename "$source"
+}
+
+install_checkpoint() {
+  local checkpoints_dir="$COMFYUI_DIR/models/checkpoints"
+  local target_name=""
+  local target_path=""
+  mkdir -p "$checkpoints_dir"
+
+  if [[ -n "$COMFYUI_CKPT_PATH" ]]; then
+    if [[ ! -f "$COMFYUI_CKPT_PATH" ]]; then
+      echo "Checkpoint file not found: $COMFYUI_CKPT_PATH"
+      exit 1
+    fi
+    target_name="${COMFYUI_CKPT_NAME:-$(basename "$COMFYUI_CKPT_PATH")}"
+    target_path="$checkpoints_dir/$target_name"
+    if [[ "$COMFYUI_CKPT_PATH" != "$target_path" ]]; then
+      cp "$COMFYUI_CKPT_PATH" "$target_path"
+    fi
+    echo "Installed ComfyUI checkpoint: $target_path"
+  elif [[ -n "$COMFYUI_CKPT_URL" ]]; then
+    target_name="${COMFYUI_CKPT_NAME:-$(source_basename "$COMFYUI_CKPT_URL")}"
+    if [[ -z "$target_name" || "$target_name" == "/" || "$target_name" == "." ]]; then
+      echo "Cannot infer checkpoint filename from URL. Pass --ckpt-name."
+      exit 1
+    fi
+    target_path="$checkpoints_dir/$target_name"
+    if [[ -f "$target_path" ]]; then
+      echo "ComfyUI checkpoint already exists, skipping download: $target_path"
+      return
+    fi
+    echo "Downloading ComfyUI checkpoint to $target_path"
+    if command -v curl >/dev/null 2>&1; then
+      if [[ -n "${HF_TOKEN:-}" ]]; then
+        curl -L -H "Authorization: Bearer $HF_TOKEN" "$COMFYUI_CKPT_URL" -o "$target_path"
+      else
+        curl -L "$COMFYUI_CKPT_URL" -o "$target_path"
+      fi
+    elif command -v wget >/dev/null 2>&1; then
+      if [[ -n "${HF_TOKEN:-}" ]]; then
+        wget --header="Authorization: Bearer $HF_TOKEN" -O "$target_path" "$COMFYUI_CKPT_URL"
+      else
+        wget -O "$target_path" "$COMFYUI_CKPT_URL"
+      fi
+    else
+      echo "Need curl or wget to download checkpoint URL."
+      exit 1
+    fi
+  fi
+}
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -198,10 +270,13 @@ EOF
   echo "Created placeholder workflow at $TARGET_WORKFLOW"
 fi
 
+install_checkpoint
+
 echo ""
 echo "ComfyUI prepared:"
 echo "  COMFYUI_DIR=$COMFYUI_DIR"
 echo "  Workflow=$TARGET_WORKFLOW"
+echo "  Checkpoints=$COMFYUI_DIR/models/checkpoints"
 echo ""
 echo "Start ComfyUI:"
 echo "  cd $COMFYUI_DIR && $COMFYUI_PYTHON_BIN main.py --listen 0.0.0.0 --port 8188"

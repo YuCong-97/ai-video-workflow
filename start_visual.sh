@@ -24,6 +24,9 @@ INSTALL_SYSTEM=0
 START_COMFYUI=0
 COMFYUI_DIR_ARG=""
 WORKFLOW_URL_ARG=""
+COMFYUI_CKPT_URL_ARG=""
+COMFYUI_CKPT_PATH_ARG=""
+COMFYUI_CKPT_NAME_ARG=""
 HUNYUAN_MODEL_REPO_ARG=""
 HUNYUAN_REPO_ARG=""
 UPDATE_CODE=0
@@ -35,6 +38,9 @@ Usage:
   ./start_visual.sh [--port 7860] [--host 0.0.0.0] [--no-install] [--no-venv]
                     [--comfyui-url http://127.0.0.1:8188]
                     [--comfyui-dir /workspace/ComfyUI]
+                    [--comfyui-ckpt-url https://example.com/model.safetensors]
+                    [--comfyui-ckpt-path /path/to/model.safetensors]
+                    [--comfyui-ckpt-name DreamShaper_8_pruned.safetensors]
                     [--hunyuan-root /workspace/HunyuanVideo-1.5]
                     [--hunyuan-ckpt /models/hunyuan/ckpts]
                     [--workflow /path/to/comfyui_workflow_api.json]
@@ -101,6 +107,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --workflow-url)
       WORKFLOW_URL_ARG="${2:?Missing value for --workflow-url}"
+      shift 2
+      ;;
+    --comfyui-ckpt-url)
+      COMFYUI_CKPT_URL_ARG="${2:?Missing value for --comfyui-ckpt-url}"
+      shift 2
+      ;;
+    --comfyui-ckpt-path)
+      COMFYUI_CKPT_PATH_ARG="${2:?Missing value for --comfyui-ckpt-path}"
+      shift 2
+      ;;
+    --comfyui-ckpt-name)
+      COMFYUI_CKPT_NAME_ARG="${2:?Missing value for --comfyui-ckpt-name}"
       shift 2
       ;;
     --setup-real-gen)
@@ -298,6 +316,15 @@ if [[ "$SETUP_REAL_GEN" -eq 1 ]]; then
   fi
   if [[ -n "$WORKFLOW_URL_ARG" ]]; then
     setup_args+=(--workflow-url "$WORKFLOW_URL_ARG")
+  fi
+  if [[ -n "$COMFYUI_CKPT_URL_ARG" ]]; then
+    setup_args+=(--comfyui-ckpt-url "$COMFYUI_CKPT_URL_ARG")
+  fi
+  if [[ -n "$COMFYUI_CKPT_PATH_ARG" ]]; then
+    setup_args+=(--comfyui-ckpt-path "$COMFYUI_CKPT_PATH_ARG")
+  fi
+  if [[ -n "$COMFYUI_CKPT_NAME_ARG" ]]; then
+    setup_args+=(--comfyui-ckpt-name "$COMFYUI_CKPT_NAME_ARG")
   fi
   if [[ -n "$HUNYUAN_REPO_ARG" ]]; then
     setup_args+=(--hunyuan-repo "$HUNYUAN_REPO_ARG")

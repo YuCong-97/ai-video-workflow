@@ -12,6 +12,9 @@ HUNYUAN_CKPT="${HUNYUAN_CKPT:-/models/hunyuan/ckpts}"
 HUNYUAN_REPO_URL="${HUNYUAN_REPO_URL:-}"
 HUNYUAN_MODEL_REPO="${HUNYUAN_MODEL_REPO:-}"
 WORKFLOW_ARG=""
+COMFYUI_CKPT_URL="${COMFYUI_CKPT_URL:-}"
+COMFYUI_CKPT_PATH="${COMFYUI_CKPT_PATH:-}"
+COMFYUI_CKPT_NAME="${COMFYUI_CKPT_NAME:-}"
 NO_MODEL=0
 UPDATE_CODE=0
 FORCE_MODEL_DOWNLOAD=0
@@ -25,6 +28,9 @@ Options:
   --workflow PATH         Copy local ComfyUI API workflow JSON.
   --workflow-url URL      Download ComfyUI API workflow JSON.
   --comfyui-dir PATH      ComfyUI install directory.
+  --comfyui-ckpt-url URL  Download a ComfyUI checkpoint.
+  --comfyui-ckpt-path PATH Copy an existing ComfyUI checkpoint.
+  --comfyui-ckpt-name NAME Target checkpoint filename.
   --hunyuan-root PATH     HunyuanVideo-I2V install directory.
   --hunyuan-ckpt PATH     HunyuanVideo model directory.
   --hunyuan-repo URL      HunyuanVideo git repository URL.
@@ -50,6 +56,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --comfyui-dir)
       COMFYUI_DIR="${2:?Missing value for --comfyui-dir}"
+      shift 2
+      ;;
+    --comfyui-ckpt-url)
+      COMFYUI_CKPT_URL="${2:?Missing value for --comfyui-ckpt-url}"
+      shift 2
+      ;;
+    --comfyui-ckpt-path)
+      COMFYUI_CKPT_PATH="${2:?Missing value for --comfyui-ckpt-path}"
+      shift 2
+      ;;
+    --comfyui-ckpt-name)
+      COMFYUI_CKPT_NAME="${2:?Missing value for --comfyui-ckpt-name}"
       shift 2
       ;;
     --hunyuan-root)
@@ -103,6 +121,15 @@ if [[ -n "$WORKFLOW_ARG" ]]; then
 fi
 if [[ -n "$WORKFLOW_URL_ARG" ]]; then
   comfy_args+=(--workflow-url "$WORKFLOW_URL_ARG")
+fi
+if [[ -n "$COMFYUI_CKPT_URL" ]]; then
+  comfy_args+=(--ckpt-url "$COMFYUI_CKPT_URL")
+fi
+if [[ -n "$COMFYUI_CKPT_PATH" ]]; then
+  comfy_args+=(--ckpt-path "$COMFYUI_CKPT_PATH")
+fi
+if [[ -n "$COMFYUI_CKPT_NAME" ]]; then
+  comfy_args+=(--ckpt-name "$COMFYUI_CKPT_NAME")
 fi
 bash "$SCRIPT_DIR/setup_comfyui.sh" "${comfy_args[@]}"
 
