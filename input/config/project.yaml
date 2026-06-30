@@ -37,6 +37,8 @@ video_gen:
   required_modules: ${HUNYUAN_REQUIRED_MODULES}
   force_pip_packages: ${HUNYUAN_FORCE_PIP_PACKAGES}
   extra_pip_packages: ${HUNYUAN_EXTRA_PIP_PACKAGES}
+  torch_index_url: ${HUNYUAN_TORCH_INDEX_URL}
+  torch_packages: ${HUNYUAN_TORCH_PACKAGES}
   resolution: 720p
   infer_steps: 50
   video_length: 129

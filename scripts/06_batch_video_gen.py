@@ -155,6 +155,9 @@ def compatible_requirements_path(requirements: Path, logger: logging.Logger) -> 
         if package_name == "tokenizers" and "==0.15.0" in normalized:
             skipped.append(line)
             continue
+        if package_name in {"torch", "torchvision", "torchaudio"}:
+            skipped.append(line)
+            continue
         output.append(line)
     compat_path.write_text("\n".join(output) + "\n", encoding="utf-8")
     if skipped:
@@ -163,6 +166,43 @@ def compatible_requirements_path(requirements: Path, logger: logging.Logger) -> 
             "; ".join(skipped),
         )
     return compat_path
+
+
+def install_compatible_torch(python_bin: str, video_gen: dict[str, Any], logger: logging.Logger, cwd: Path) -> None:
+    torch_packages = shlex.split(config_string(video_gen, "torch_packages", "torch torchvision torchaudio"))
+    torch_index_url = config_string(video_gen, "torch_index_url", os.environ.get("HUNYUAN_TORCH_INDEX_URL", "https://download.pytorch.org/whl/cu124"))
+    if not torch_packages:
+        return
+
+    probe = subprocess.run(
+        [python_bin, "-c", "import torch; assert torch.cuda.is_available(), torch.version.cuda"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if probe.returncode == 0:
+        return
+
+    logger.info("Installing CUDA-compatible torch packages: %s index=%s", " ".join(torch_packages), torch_index_url)
+    command = [python_bin, "-m", "pip", "install", "--force-reinstall", *torch_packages]
+    if torch_index_url:
+        command.extend(["--index-url", torch_index_url])
+    run_command(command, logger, cwd=cwd)
+
+    probe = subprocess.run(
+        [python_bin, "-c", "import torch; assert torch.cuda.is_available(), torch.version.cuda; print(torch.__version__, torch.version.cuda)"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        raise RuntimeError(
+            "Torch CUDA is not available after installing compatible packages. "
+            f"stdout={probe.stdout[-1000:]} stderr={probe.stderr[-1000:]}"
+        )
+    logger.info("Torch CUDA available: %s", probe.stdout.strip())
 
 
 def has_python_module(module: str, python_bin: str, cwd: Path, logger: logging.Logger) -> bool:
@@ -202,6 +242,7 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
         return
 
     python_bin = str(video_gen.get("python_bin", "python3"))
+    install_compatible_torch(python_bin, video_gen, logger, hunyuan_root)
     default_required = "loguru imageio diffusers.models.autoencoders.autoencoder_kl deepspeed tensorboard"
     required_modules = shlex.split(config_string(video_gen, "required_modules", default_required))
     requirements = hunyuan_root / "requirements.txt"

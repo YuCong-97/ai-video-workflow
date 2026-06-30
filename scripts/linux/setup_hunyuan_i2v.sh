@@ -5,6 +5,8 @@ HUNYUAN_ROOT="${HUNYUAN_ROOT:-/workspace/HunyuanVideo-I2V}"
 HUNYUAN_REPO_URL="${HUNYUAN_REPO_URL:-https://github.com/Tencent-Hunyuan/HunyuanVideo-I2V.git}"
 HUNYUAN_CKPT="${HUNYUAN_CKPT:-/models/hunyuan/ckpts}"
 HUNYUAN_MODEL_REPO="${HUNYUAN_MODEL_REPO:-tencent/HunyuanVideo-I2V}"
+HUNYUAN_TORCH_INDEX_URL="${HUNYUAN_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
+HUNYUAN_TORCH_PACKAGES="${HUNYUAN_TORCH_PACKAGES:-torch torchvision torchaudio}"
 
 # Optional Hugging Face token for private/gated model downloads.
 # Fill it manually if needed, for example:
@@ -34,7 +36,8 @@ Options:
   --force-model-download  Run Hugging Face download even if model files exist.
 
 Environment:
-  HUNYUAN_ROOT, HUNYUAN_CKPT, HUNYUAN_REPO_URL, HUNYUAN_MODEL_REPO, HF_TOKEN
+  HUNYUAN_ROOT, HUNYUAN_CKPT, HUNYUAN_REPO_URL, HUNYUAN_MODEL_REPO, HF_TOKEN,
+  HUNYUAN_TORCH_INDEX_URL, HUNYUAN_TORCH_PACKAGES
 
 Notes:
   Large model downloads can take a long time and consume substantial disk space.
@@ -112,6 +115,29 @@ has_hunyuan_i2v_weight() {
   [[ -f "$path/hunyuan-video-i2v-720p/transformers/mp_rank_00_model_states.pt" ]]
 }
 
+torch_cuda_ok() {
+  python3 - <<'PY' >/dev/null 2>&1
+import torch
+assert torch.cuda.is_available(), torch.version.cuda
+PY
+}
+
+install_compatible_torch() {
+  if [[ -z "$HUNYUAN_TORCH_PACKAGES" ]]; then
+    return 0
+  fi
+  if torch_cuda_ok; then
+    echo "Hunyuan torch CUDA check passed, skipping torch reinstall."
+    return 0
+  fi
+  echo "Installing Hunyuan torch packages from $HUNYUAN_TORCH_INDEX_URL"
+  if [[ -n "$HUNYUAN_TORCH_INDEX_URL" ]]; then
+    python3 -m pip install --force-reinstall $HUNYUAN_TORCH_PACKAGES --index-url "$HUNYUAN_TORCH_INDEX_URL"
+  else
+    python3 -m pip install --force-reinstall $HUNYUAN_TORCH_PACKAGES
+  fi
+}
+
 install_hunyuan_requirements() {
   local requirements_path="$HUNYUAN_ROOT/requirements.txt"
   local compat_path="/tmp/hunyuan_requirements_compat.txt"
@@ -134,6 +160,9 @@ for line in source.read_text(encoding="utf-8").splitlines():
     normalized = line.strip().lower()
     package_name = re.split(r"[<>=!~;\[\s]", normalized, maxsplit=1)[0]
     if package_name == "tokenizers" and "==0.15.0" in normalized:
+        skipped.append(line)
+        continue
+    if package_name in {"torch", "torchvision", "torchaudio"}:
         skipped.append(line)
         continue
     out.append(line)
@@ -163,6 +192,7 @@ fi
 
 if [[ "$NO_INSTALL" -eq 0 ]]; then
   python3 -m pip install --upgrade pip
+  install_compatible_torch
   install_hunyuan_requirements
   python3 -m pip install "huggingface_hub[cli]" hf_transfer
 fi

@@ -171,6 +171,8 @@ optional_values = {
     "COMFYUI_CKPT_URL": sys.argv[6],
     "COMFYUI_CKPT_PATH": sys.argv[7],
     "COMFYUI_CKPT_NAME": sys.argv[8],
+    "HUNYUAN_TORCH_INDEX_URL": "https://download.pytorch.org/whl/cu124",
+    "HUNYUAN_TORCH_PACKAGES": "torch torchvision torchaudio",
 }
 values.update({key: value for key, value in optional_values.items() if value})
 lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []

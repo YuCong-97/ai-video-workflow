@@ -4,6 +4,8 @@ set -Eeuo pipefail
 HOST="0.0.0.0"
 PORT="${APP_PORT:-7860}"
 DEFAULT_HUNYUAN_ROOT="${DEFAULT_HUNYUAN_ROOT:-/workspace/HunyuanVideo-I2V}"
+DEFAULT_HUNYUAN_TORCH_INDEX_URL="${DEFAULT_HUNYUAN_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
+DEFAULT_HUNYUAN_TORCH_PACKAGES="${DEFAULT_HUNYUAN_TORCH_PACKAGES:-torch torchvision torchaudio}"
 DEFAULT_COMFYUI_CKPT_URL="${DEFAULT_COMFYUI_CKPT_URL:-https://huggingface.co/Lykon/DreamShaper/resolve/main/DreamShaper_8_pruned.safetensors}"
 DEFAULT_COMFYUI_CKPT_NAME="${DEFAULT_COMFYUI_CKPT_NAME:-DreamShaper_8_pruned.safetensors}"
 
@@ -305,6 +307,14 @@ fi
 
 if [[ -n "$HUNYUAN_CKPT_ARG" ]]; then
   set_env_value "HUNYUAN_CKPT" "$HUNYUAN_CKPT_ARG"
+fi
+
+if ! grep -q '^HUNYUAN_TORCH_INDEX_URL=' .env 2>/dev/null; then
+  set_env_value "HUNYUAN_TORCH_INDEX_URL" "$DEFAULT_HUNYUAN_TORCH_INDEX_URL"
+fi
+
+if ! grep -q '^HUNYUAN_TORCH_PACKAGES=' .env 2>/dev/null; then
+  set_env_value "HUNYUAN_TORCH_PACKAGES" "$DEFAULT_HUNYUAN_TORCH_PACKAGES"
 fi
 
 set -a
