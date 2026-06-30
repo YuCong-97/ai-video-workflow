@@ -155,7 +155,8 @@ if [[ ! -f ".env" && -f ".env.example" ]]; then
   cp .env.example .env
 fi
 
-python3 - "$PROJECT_DIR/.env" "$COMFYUI_URL" "$HUNYUAN_ROOT" "$HUNYUAN_CKPT" "$PORT" <<'PY'
+python3 - "$PROJECT_DIR/.env" "$COMFYUI_URL" "$HUNYUAN_ROOT" "$HUNYUAN_CKPT" "$PORT" \
+  "$COMFYUI_CKPT_URL" "$COMFYUI_CKPT_PATH" "$COMFYUI_CKPT_NAME" <<'PY'
 from pathlib import Path
 import sys
 
@@ -166,6 +167,12 @@ values = {
     "HUNYUAN_CKPT": sys.argv[4],
     "APP_PORT": sys.argv[5],
 }
+optional_values = {
+    "COMFYUI_CKPT_URL": sys.argv[6],
+    "COMFYUI_CKPT_PATH": sys.argv[7],
+    "COMFYUI_CKPT_NAME": sys.argv[8],
+}
+values.update({key: value for key, value in optional_values.items() if value})
 lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
 out = []
 seen = set()

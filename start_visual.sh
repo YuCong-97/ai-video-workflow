@@ -61,6 +61,8 @@ Examples:
 Notes:
   Use this script on Linux / RunPod.
   Use start_visual.ps1 on Windows PowerShell.
+  ComfyUI checkpoint options can also be configured through .env:
+  COMFYUI_CKPT_URL, COMFYUI_CKPT_PATH, COMFYUI_CKPT_NAME.
   Plain startup prepares paths and config. Use --runpod-full for a blank RunPod:
   system packages, Python deps, ComfyUI, HunyuanVideo-I2V, model download,
   ComfyUI background startup, then this web UI.
@@ -280,6 +282,18 @@ if [[ -n "$COMFYUI_DIR_ARG" ]]; then
   set_env_value "COMFYUI_DIR" "$COMFYUI_DIR_ARG"
 fi
 
+if [[ -n "$COMFYUI_CKPT_URL_ARG" ]]; then
+  set_env_value "COMFYUI_CKPT_URL" "$COMFYUI_CKPT_URL_ARG"
+fi
+
+if [[ -n "$COMFYUI_CKPT_PATH_ARG" ]]; then
+  set_env_value "COMFYUI_CKPT_PATH" "$COMFYUI_CKPT_PATH_ARG"
+fi
+
+if [[ -n "$COMFYUI_CKPT_NAME_ARG" ]]; then
+  set_env_value "COMFYUI_CKPT_NAME" "$COMFYUI_CKPT_NAME_ARG"
+fi
+
 if [[ -n "$HUNYUAN_ROOT_ARG" ]]; then
   set_env_value "HUNYUAN_ROOT" "$HUNYUAN_ROOT_ARG"
 fi
@@ -317,14 +331,14 @@ if [[ "$SETUP_REAL_GEN" -eq 1 ]]; then
   if [[ -n "$WORKFLOW_URL_ARG" ]]; then
     setup_args+=(--workflow-url "$WORKFLOW_URL_ARG")
   fi
-  if [[ -n "$COMFYUI_CKPT_URL_ARG" ]]; then
-    setup_args+=(--comfyui-ckpt-url "$COMFYUI_CKPT_URL_ARG")
+  if [[ -n "${COMFYUI_CKPT_URL:-}" ]]; then
+    setup_args+=(--comfyui-ckpt-url "$COMFYUI_CKPT_URL")
   fi
-  if [[ -n "$COMFYUI_CKPT_PATH_ARG" ]]; then
-    setup_args+=(--comfyui-ckpt-path "$COMFYUI_CKPT_PATH_ARG")
+  if [[ -n "${COMFYUI_CKPT_PATH:-}" ]]; then
+    setup_args+=(--comfyui-ckpt-path "$COMFYUI_CKPT_PATH")
   fi
-  if [[ -n "$COMFYUI_CKPT_NAME_ARG" ]]; then
-    setup_args+=(--comfyui-ckpt-name "$COMFYUI_CKPT_NAME_ARG")
+  if [[ -n "${COMFYUI_CKPT_NAME:-}" ]]; then
+    setup_args+=(--comfyui-ckpt-name "$COMFYUI_CKPT_NAME")
   fi
   if [[ -n "$HUNYUAN_REPO_ARG" ]]; then
     setup_args+=(--hunyuan-repo "$HUNYUAN_REPO_ARG")
