@@ -8,8 +8,16 @@ HUNYUAN_MODEL_REPO="${HUNYUAN_MODEL_REPO:-tencent/HunyuanVideo-I2V}"
 HUNYUAN_TEXT_ENCODER_REPO="${HUNYUAN_TEXT_ENCODER_REPO:-xtuner/llava-llama-3-8b-v1_1-transformers}"
 HUNYUAN_CLIP_REPO="${HUNYUAN_CLIP_REPO:-openai/clip-vit-large-patch14}"
 HUNYUAN_TORCH_INDEX_URL="${HUNYUAN_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
-HUNYUAN_TORCH_PACKAGES="${HUNYUAN_TORCH_PACKAGES:-torch torchvision torchaudio}"
+HUNYUAN_TORCH_PACKAGES="${HUNYUAN_TORCH_PACKAGES:-torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0}"
 HUNYUAN_FORCE_PIP_PACKAGES="${HUNYUAN_FORCE_PIP_PACKAGES:-diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22}"
+HUNYUAN_FLASH_ATTN_PACKAGE="${HUNYUAN_FLASH_ATTN_PACKAGE:-git+https://github.com/Dao-AILab/flash-attention.git@v2.6.3}"
+
+if [[ "$HUNYUAN_TORCH_PACKAGES" == "torch torchvision torchaudio" ]]; then
+  HUNYUAN_TORCH_PACKAGES="torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0"
+fi
+if [[ "$HUNYUAN_FORCE_PIP_PACKAGES" == *"transformers==4.48.0"* ]]; then
+  HUNYUAN_FORCE_PIP_PACKAGES="diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22"
+fi
 
 # Optional Hugging Face token for private/gated model downloads.
 # Fill it manually if needed, for example:
@@ -43,7 +51,8 @@ Options:
 Environment:
   HUNYUAN_ROOT, HUNYUAN_CKPT, HUNYUAN_REPO_URL, HUNYUAN_MODEL_REPO,
   HUNYUAN_TEXT_ENCODER_REPO, HUNYUAN_CLIP_REPO, HF_TOKEN,
-  HUNYUAN_TORCH_INDEX_URL, HUNYUAN_TORCH_PACKAGES, HUNYUAN_FORCE_PIP_PACKAGES
+  HUNYUAN_TORCH_INDEX_URL, HUNYUAN_TORCH_PACKAGES, HUNYUAN_FORCE_PIP_PACKAGES,
+  HUNYUAN_FLASH_ATTN_PACKAGE
 
 Notes:
   Large model downloads can take a long time and consume substantial disk space.
@@ -206,9 +215,19 @@ ensure_local_ckpts_link() {
 }
 
 torch_cuda_ok() {
-  python3 - <<'PY' >/dev/null 2>&1
+  python3 - "$HUNYUAN_TORCH_PACKAGES" <<'PY' >/dev/null 2>&1
 import torch
+import re
+import sys
+
 assert torch.cuda.is_available(), torch.version.cuda
+expected = None
+for item in sys.argv[1].split():
+    if item.startswith("torch=="):
+        expected = item.split("==", 1)[1]
+        break
+actual = torch.__version__.split("+", 1)[0]
+assert expected is None or actual == expected, (actual, expected)
 PY
 }
 
@@ -269,6 +288,27 @@ PY
   python3 -m pip install -r "$compat_path"
 }
 
+flash_attn_ok() {
+  python3 - <<'PY' >/dev/null 2>&1
+from flash_attn import flash_attn_varlen_func
+assert callable(flash_attn_varlen_func)
+PY
+}
+
+install_flash_attn() {
+  if [[ -z "$HUNYUAN_FLASH_ATTN_PACKAGE" || "$HUNYUAN_FLASH_ATTN_PACKAGE" == "0" || "$HUNYUAN_FLASH_ATTN_PACKAGE" == "false" || "$HUNYUAN_FLASH_ATTN_PACKAGE" == "no" ]]; then
+    echo "Flash Attention auto install disabled."
+    return 0
+  fi
+  if flash_attn_ok; then
+    echo "Flash Attention check passed, skipping install."
+    return 0
+  fi
+  echo "Installing Flash Attention: $HUNYUAN_FLASH_ATTN_PACKAGE"
+  python3 -m pip install ninja packaging wheel setuptools
+  python3 -m pip install --no-build-isolation "$HUNYUAN_FLASH_ATTN_PACKAGE"
+}
+
 if [[ ! -d "$HUNYUAN_ROOT/.git" ]]; then
   mkdir -p "$(dirname "$HUNYUAN_ROOT")"
   git clone "$HUNYUAN_REPO_URL" "$HUNYUAN_ROOT"
@@ -286,8 +326,9 @@ if [[ "$NO_INSTALL" -eq 0 ]]; then
   install_hunyuan_requirements
   if [[ -n "$HUNYUAN_FORCE_PIP_PACKAGES" ]]; then
     echo "Installing pinned Hunyuan packages: $HUNYUAN_FORCE_PIP_PACKAGES"
-    python3 -m pip install --force-reinstall $HUNYUAN_FORCE_PIP_PACKAGES
+    python3 -m pip install --force-reinstall --no-deps $HUNYUAN_FORCE_PIP_PACKAGES
   fi
+  install_flash_attn
   python3 -m pip install "huggingface_hub[cli]" hf_transfer
 fi
 

@@ -5,7 +5,11 @@ HOST="0.0.0.0"
 PORT="${APP_PORT:-7860}"
 DEFAULT_HUNYUAN_ROOT="${DEFAULT_HUNYUAN_ROOT:-/workspace/HunyuanVideo-I2V}"
 DEFAULT_HUNYUAN_TORCH_INDEX_URL="${DEFAULT_HUNYUAN_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
-DEFAULT_HUNYUAN_TORCH_PACKAGES="${DEFAULT_HUNYUAN_TORCH_PACKAGES:-torch torchvision torchaudio}"
+DEFAULT_HUNYUAN_TORCH_PACKAGES="${DEFAULT_HUNYUAN_TORCH_PACKAGES:-torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0}"
+DEFAULT_HUNYUAN_REQUIRED_MODULES="${DEFAULT_HUNYUAN_REQUIRED_MODULES:-loguru imageio diffusers.models.autoencoders.autoencoder_kl deepspeed tensorboard flash_attn}"
+DEFAULT_HUNYUAN_FORCE_PIP_PACKAGES="${DEFAULT_HUNYUAN_FORCE_PIP_PACKAGES:-diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22}"
+DEFAULT_HUNYUAN_EXTRA_PIP_PACKAGES="${DEFAULT_HUNYUAN_EXTRA_PIP_PACKAGES:-loguru imageio imageio-ffmpeg diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22 deepspeed tensorboard}"
+DEFAULT_HUNYUAN_FLASH_ATTN_PACKAGE="${DEFAULT_HUNYUAN_FLASH_ATTN_PACKAGE:-git+https://github.com/Dao-AILab/flash-attention.git@v2.6.3}"
 DEFAULT_COMFYUI_CKPT_URL="${DEFAULT_COMFYUI_CKPT_URL:-https://huggingface.co/Lykon/DreamShaper/resolve/main/DreamShaper_8_pruned.safetensors}"
 DEFAULT_COMFYUI_CKPT_NAME="${DEFAULT_COMFYUI_CKPT_NAME:-DreamShaper_8_pruned.safetensors}"
 
@@ -323,6 +327,10 @@ fi
 
 set_env_value "HUNYUAN_TORCH_INDEX_URL" "$DEFAULT_HUNYUAN_TORCH_INDEX_URL"
 set_env_value "HUNYUAN_TORCH_PACKAGES" "$DEFAULT_HUNYUAN_TORCH_PACKAGES"
+set_env_value "HUNYUAN_REQUIRED_MODULES" "$DEFAULT_HUNYUAN_REQUIRED_MODULES"
+set_env_value "HUNYUAN_FORCE_PIP_PACKAGES" "$DEFAULT_HUNYUAN_FORCE_PIP_PACKAGES"
+set_env_value "HUNYUAN_EXTRA_PIP_PACKAGES" "$DEFAULT_HUNYUAN_EXTRA_PIP_PACKAGES"
+set_env_value "HUNYUAN_FLASH_ATTN_PACKAGE" "$DEFAULT_HUNYUAN_FLASH_ATTN_PACKAGE"
 
 set -a
 # shellcheck disable=SC1091

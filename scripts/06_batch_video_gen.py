@@ -24,6 +24,8 @@ DEFAULT_HUNYUAN_EXTRA_PIP_PACKAGES = (
     "loguru imageio imageio-ffmpeg diffusers==0.31.0 "
     "transformers==4.47.1 tokenizers>=0.21,<0.22 deepspeed tensorboard"
 )
+DEFAULT_HUNYUAN_FLASH_ATTN_PACKAGE = "git+https://github.com/Dao-AILab/flash-attention.git@v2.6.3"
+DEFAULT_HUNYUAN_TORCH_PACKAGES = "torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0"
 HUNYUAN_RUNTIME_READY: set[Path] = set()
 
 
@@ -176,13 +178,25 @@ def compatible_requirements_path(requirements: Path, logger: logging.Logger) -> 
 
 
 def install_compatible_torch(python_bin: str, video_gen: dict[str, Any], logger: logging.Logger, cwd: Path) -> None:
-    torch_packages = shlex.split(config_string(video_gen, "torch_packages", "torch torchvision torchaudio"))
+    torch_package_string = config_string(video_gen, "torch_packages", DEFAULT_HUNYUAN_TORCH_PACKAGES)
+    torch_packages = shlex.split(torch_package_string)
     torch_index_url = config_string(video_gen, "torch_index_url", os.environ.get("HUNYUAN_TORCH_INDEX_URL", "https://download.pytorch.org/whl/cu124"))
     if not torch_packages:
         return
 
+    expected_torch = pinned_package_version(torch_package_string, "torch")
     probe = subprocess.run(
-        [python_bin, "-c", "import torch; assert torch.cuda.is_available(), torch.version.cuda"],
+        [
+            python_bin,
+            "-c",
+            (
+                "import torch\n"
+                "assert torch.cuda.is_available(), torch.version.cuda\n"
+                f"expected = {expected_torch!r}\n"
+                "actual = torch.__version__.split('+', 1)[0]\n"
+                "assert not expected or actual == expected, (actual, expected)\n"
+            ),
+        ],
         cwd=cwd,
         capture_output=True,
         text=True,
@@ -257,6 +271,38 @@ def python_package_version(package_name: str, python_bin: str, cwd: Path) -> str
     return result.stdout.strip()
 
 
+def flash_attn_available(python_bin: str, cwd: Path) -> bool:
+    script = "from flash_attn import flash_attn_varlen_func\nassert callable(flash_attn_varlen_func)\n"
+    result = subprocess.run(
+        [python_bin, "-c", script],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+def install_flash_attn(python_bin: str, video_gen: dict[str, Any], logger: logging.Logger, cwd: Path) -> None:
+    if flash_attn_available(python_bin, cwd):
+        return
+
+    package = config_string(video_gen, "flash_attn_package", DEFAULT_HUNYUAN_FLASH_ATTN_PACKAGE)
+    if not package or package.lower() in {"0", "false", "no", "none"}:
+        logger.info("Flash Attention is unavailable and auto install is disabled.")
+        return
+
+    logger.info("Installing Flash Attention for Hunyuan: %s", package)
+    run_command([python_bin, "-m", "pip", "install", "ninja", "packaging", "wheel", "setuptools"], logger, cwd=cwd)
+    run_command([python_bin, "-m", "pip", "install", "--no-build-isolation", package], logger, cwd=cwd)
+
+    if not flash_attn_available(python_bin, cwd):
+        raise RuntimeError(
+            "Flash Attention installed but flash_attn_varlen_func is still unavailable. "
+            "Check CUDA, torch, and flash-attn build logs."
+        )
+
+
 def config_string(config: dict[str, Any], key: str, default: str = "") -> str:
     value = str(config.get(key, "") or "").strip()
     if not value or "${" in value:
@@ -301,9 +347,11 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
     if force_packages and (missing or (expected_transformers and installed_transformers != expected_transformers)):
         reason = ", ".join(missing) if missing else f"transformers {installed_transformers or '<missing>'} != {expected_transformers}"
         logger.info("Installing pinned Hunyuan packages because runtime is incompatible: %s", reason)
-        run_command([python_bin, "-m", "pip", "install", "--force-reinstall", *shlex.split(force_packages)], logger, cwd=hunyuan_root)
+        run_command([python_bin, "-m", "pip", "install", "--force-reinstall", "--no-deps", *shlex.split(force_packages)], logger, cwd=hunyuan_root)
 
     extra_packages = config_string(video_gen, "extra_pip_packages", DEFAULT_HUNYUAN_EXTRA_PIP_PACKAGES)
+    install_flash_attn(python_bin, video_gen, logger, hunyuan_root)
+
     missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
     if extra_packages and missing:
         logger.info("Installing Hunyuan extra packages because modules are missing: %s", ", ".join(missing))

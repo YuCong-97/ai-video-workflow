@@ -11,6 +11,10 @@ HUNYUAN_ROOT="${HUNYUAN_ROOT:-/workspace/HunyuanVideo-I2V}"
 HUNYUAN_CKPT="${HUNYUAN_CKPT:-/models/hunyuan/ckpts}"
 HUNYUAN_REPO_URL="${HUNYUAN_REPO_URL:-}"
 HUNYUAN_MODEL_REPO="${HUNYUAN_MODEL_REPO:-}"
+HUNYUAN_TORCH_PACKAGES="${HUNYUAN_TORCH_PACKAGES:-torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0}"
+HUNYUAN_FORCE_PIP_PACKAGES="${HUNYUAN_FORCE_PIP_PACKAGES:-diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22}"
+HUNYUAN_EXTRA_PIP_PACKAGES="${HUNYUAN_EXTRA_PIP_PACKAGES:-loguru imageio imageio-ffmpeg diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22 deepspeed tensorboard}"
+HUNYUAN_FLASH_ATTN_PACKAGE="${HUNYUAN_FLASH_ATTN_PACKAGE:-git+https://github.com/Dao-AILab/flash-attention.git@v2.6.3}"
 WORKFLOW_ARG=""
 COMFYUI_CKPT_URL="${COMFYUI_CKPT_URL:-}"
 COMFYUI_CKPT_PATH="${COMFYUI_CKPT_PATH:-}"
@@ -18,6 +22,17 @@ COMFYUI_CKPT_NAME="${COMFYUI_CKPT_NAME:-}"
 NO_MODEL=0
 UPDATE_CODE=0
 FORCE_MODEL_DOWNLOAD=0
+
+if [[ "$HUNYUAN_TORCH_PACKAGES" == "torch torchvision torchaudio" ]]; then
+  HUNYUAN_TORCH_PACKAGES="torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0"
+fi
+if [[ "$HUNYUAN_FORCE_PIP_PACKAGES" == *"transformers==4.48.0"* ]]; then
+  HUNYUAN_FORCE_PIP_PACKAGES="diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22"
+fi
+if [[ "$HUNYUAN_EXTRA_PIP_PACKAGES" == *"transformers==4.48.0"* ]]; then
+  HUNYUAN_EXTRA_PIP_PACKAGES="loguru imageio imageio-ffmpeg diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22 deepspeed tensorboard"
+fi
+export HUNYUAN_TORCH_PACKAGES HUNYUAN_FORCE_PIP_PACKAGES HUNYUAN_EXTRA_PIP_PACKAGES HUNYUAN_FLASH_ATTN_PACKAGE
 
 usage() {
   cat <<'EOF'
@@ -175,10 +190,12 @@ optional_values = {
     "COMFYUI_CKPT_NAME": sys.argv[8],
     "HUNYUAN_TEXT_ENCODER_REPO": "xtuner/llava-llama-3-8b-v1_1-transformers",
     "HUNYUAN_CLIP_REPO": "openai/clip-vit-large-patch14",
+    "HUNYUAN_REQUIRED_MODULES": "loguru imageio diffusers.models.autoencoders.autoencoder_kl deepspeed tensorboard flash_attn",
     "HUNYUAN_TORCH_INDEX_URL": "https://download.pytorch.org/whl/cu124",
-    "HUNYUAN_TORCH_PACKAGES": "torch torchvision torchaudio",
+    "HUNYUAN_TORCH_PACKAGES": "torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0",
     "HUNYUAN_FORCE_PIP_PACKAGES": "diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22",
     "HUNYUAN_EXTRA_PIP_PACKAGES": "loguru imageio imageio-ffmpeg diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22 deepspeed tensorboard",
+    "HUNYUAN_FLASH_ATTN_PACKAGE": "git+https://github.com/Dao-AILab/flash-attention.git@v2.6.3",
 }
 values.update({key: value for key, value in optional_values.items() if value})
 
