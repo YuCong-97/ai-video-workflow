@@ -4,11 +4,15 @@ import csv
 import json
 import logging
 import os
+import queue
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -468,12 +472,59 @@ def validate_real_generation_config(project_config: dict, logger: logging.Logger
 
 def run_pipeline_step(command: list[str], timeout_sec: int, logger: logging.Logger) -> tuple[bool, str]:
     logger.info("Running pipeline command: %s", " ".join(command))
-    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=timeout_sec, check=False)
-    output = "\n".join(part for part in [result.stdout, result.stderr] if part)
-    if output:
-        logger.info("Pipeline command output:\n%s", output[-12000:])
-    if result.returncode != 0:
-        return False, f"Command failed exit={result.returncode}: {' '.join(command)}\n{output[-4000:]}"
+    output_tail: deque[str] = deque(maxlen=240)
+    output_queue: queue.Queue[str] = queue.Queue()
+    process = subprocess.Popen(
+        command,
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        start_new_session=True,
+    )
+    deadline = time.time() + timeout_sec
+    assert process.stdout is not None
+
+    def read_output() -> None:
+        assert process.stdout is not None
+        for item in process.stdout:
+            output_queue.put(item.rstrip())
+
+    reader = threading.Thread(target=read_output, daemon=True)
+    reader.start()
+
+    while True:
+        try:
+            line = output_queue.get(timeout=0.2)
+            output_tail.append(line)
+            logger.info("Pipeline: %s", line)
+        except queue.Empty:
+            pass
+
+        if process.poll() is not None:
+            break
+
+        if time.time() > deadline:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except Exception:
+                process.terminate()
+            output = "\n".join(output_tail)
+            return False, f"Command timed out after {timeout_sec}s: {' '.join(command)}\n{output[-4000:]}"
+
+    reader.join(timeout=2)
+    while True:
+        try:
+            line = output_queue.get_nowait()
+        except queue.Empty:
+            break
+        output_tail.append(line)
+        logger.info("Pipeline: %s", line)
+
+    output = "\n".join(output_tail)
+    if process.returncode != 0:
+        return False, f"Command failed exit={process.returncode}: {' '.join(command)}\n{output[-4000:]}"
     return True, output[-4000:]
 
 
