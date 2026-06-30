@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 HOST="0.0.0.0"
 PORT="${APP_PORT:-7860}"
+DEFAULT_COMFYUI_CKPT_URL="${DEFAULT_COMFYUI_CKPT_URL:-https://huggingface.co/Lykon/DreamShaper/resolve/main/DreamShaper_8_pruned.safetensors}"
+DEFAULT_COMFYUI_CKPT_NAME="${DEFAULT_COMFYUI_CKPT_NAME:-DreamShaper_8_pruned.safetensors}"
 
 # Optional Hugging Face token for private/gated model downloads.
 # Fill it manually if needed, for example:
@@ -56,11 +58,13 @@ Examples:
   ./start_visual.sh --workflow /workspace/workflows/your_comfyui_workflow_api.json
   ./start_visual.sh --hunyuan-root /workspace/HunyuanVideo-I2V --hunyuan-ckpt /models/hunyuan/ckpts
   ./start_visual.sh --setup-real-gen --workflow /workspace/workflows/your_comfyui_workflow_api.json
-  ./start_visual.sh --runpod-full --workflow /workspace/workflows/your_comfyui_workflow_api.json
+  ./start_visual.sh --runpod-full --port 7860
 
 Notes:
   Use this script on Linux / RunPod.
   Use start_visual.ps1 on Windows PowerShell.
+  --runpod-full defaults to the bundled ComfyUI workflow and downloads:
+  DreamShaper_8_pruned.safetensors.
   ComfyUI checkpoint options can also be configured through .env:
   COMFYUI_CKPT_URL, COMFYUI_CKPT_PATH, COMFYUI_CKPT_NAME.
   Plain startup prepares paths and config. Use --runpod-full for a blank RunPod:
@@ -316,6 +320,17 @@ if [[ -z "${COMFYUI_PYTHON_BIN:-}" ]]; then
     export COMFYUI_PYTHON_BIN="/usr/bin/python3"
   else
     export COMFYUI_PYTHON_BIN="$SYSTEM_PYTHON_BIN"
+  fi
+fi
+
+if [[ "$RUNPOD_FULL" -eq 1 ]]; then
+  if [[ -z "${COMFYUI_CKPT_URL:-}" && -z "${COMFYUI_CKPT_PATH:-}" ]]; then
+    export COMFYUI_CKPT_URL="$DEFAULT_COMFYUI_CKPT_URL"
+    set_env_value "COMFYUI_CKPT_URL" "$COMFYUI_CKPT_URL"
+  fi
+  if [[ -z "${COMFYUI_CKPT_NAME:-}" ]]; then
+    export COMFYUI_CKPT_NAME="$DEFAULT_COMFYUI_CKPT_NAME"
+    set_env_value "COMFYUI_CKPT_NAME" "$COMFYUI_CKPT_NAME"
   fi
 fi
 

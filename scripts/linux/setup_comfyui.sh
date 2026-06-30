@@ -104,6 +104,16 @@ source_basename() {
   basename "$source"
 }
 
+checkpoint_file_ok() {
+  local path="$1"
+  local size=""
+  if [[ ! -f "$path" ]]; then
+    return 1
+  fi
+  size="$(wc -c < "$path" | tr -d ' ')"
+  [[ "${size:-0}" -gt 1048576 ]]
+}
+
 install_checkpoint() {
   local checkpoints_dir="$COMFYUI_DIR/models/checkpoints"
   local target_name=""
@@ -120,6 +130,10 @@ install_checkpoint() {
     if [[ "$COMFYUI_CKPT_PATH" != "$target_path" ]]; then
       cp "$COMFYUI_CKPT_PATH" "$target_path"
     fi
+    if ! checkpoint_file_ok "$target_path"; then
+      echo "Installed checkpoint looks invalid or too small: $target_path"
+      exit 1
+    fi
     echo "Installed ComfyUI checkpoint: $target_path"
   elif [[ -n "$COMFYUI_CKPT_URL" ]]; then
     target_name="${COMFYUI_CKPT_NAME:-$(source_basename "$COMFYUI_CKPT_URL")}"
@@ -128,25 +142,34 @@ install_checkpoint() {
       exit 1
     fi
     target_path="$checkpoints_dir/$target_name"
-    if [[ -f "$target_path" ]]; then
+    if checkpoint_file_ok "$target_path"; then
       echo "ComfyUI checkpoint already exists, skipping download: $target_path"
       return
+    fi
+    if [[ -f "$target_path" ]]; then
+      echo "Existing checkpoint is incomplete or invalid, redownloading: $target_path"
+      rm -f "$target_path"
     fi
     echo "Downloading ComfyUI checkpoint to $target_path"
     if command -v curl >/dev/null 2>&1; then
       if [[ -n "${HF_TOKEN:-}" ]]; then
-        curl -L -H "Authorization: Bearer $HF_TOKEN" "$COMFYUI_CKPT_URL" -o "$target_path"
+        curl -L --fail --retry 3 --continue-at - -H "Authorization: Bearer $HF_TOKEN" "$COMFYUI_CKPT_URL" -o "$target_path"
       else
-        curl -L "$COMFYUI_CKPT_URL" -o "$target_path"
+        curl -L --fail --retry 3 --continue-at - "$COMFYUI_CKPT_URL" -o "$target_path"
       fi
     elif command -v wget >/dev/null 2>&1; then
       if [[ -n "${HF_TOKEN:-}" ]]; then
-        wget --header="Authorization: Bearer $HF_TOKEN" -O "$target_path" "$COMFYUI_CKPT_URL"
+        wget -c --header="Authorization: Bearer $HF_TOKEN" -O "$target_path" "$COMFYUI_CKPT_URL"
       else
-        wget -O "$target_path" "$COMFYUI_CKPT_URL"
+        wget -c -O "$target_path" "$COMFYUI_CKPT_URL"
       fi
     else
       echo "Need curl or wget to download checkpoint URL."
+      exit 1
+    fi
+    if ! checkpoint_file_ok "$target_path"; then
+      echo "Downloaded checkpoint looks invalid or too small: $target_path"
+      echo "Check the URL, HF_TOKEN, and network access, then rerun the setup command."
       exit 1
     fi
   fi
