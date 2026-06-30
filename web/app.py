@@ -937,13 +937,27 @@ HTML = r"""
       try {
         const data = new FormData(form);
         const res = await fetch("/api/generate", { method: "POST", body: data });
-        const payload = await res.json();
+        const text = await res.text();
+        let payload = null;
+        try {
+          payload = text ? JSON.parse(text) : null;
+        } catch (parseError) {
+          const contentType = res.headers.get("content-type") || "<unknown>";
+          statusBox.textContent = "Request failed: non-JSON response";
+          resultBox.textContent = [
+            `HTTP ${res.status} ${res.statusText}`,
+            `Content-Type: ${contentType}`,
+            "",
+            text.slice(0, 6000),
+          ].join("\n");
+          return;
+        }
         resultBox.textContent = JSON.stringify(payload, null, 2);
-        if (!res.ok || !payload.ok) {
+        if (!res.ok || !payload?.ok) {
           statusBox.textContent = "未生成真实视频，请查看右侧 errors";
           return;
         }
-        statusBox.textContent = payload.job.generated_videos?.length ? payload.message : "任务已创建";
+        statusBox.textContent = payload.job?.generated_videos?.length ? payload.message : "Task created";
       } catch (error) {
         statusBox.textContent = "生成失败";
         resultBox.textContent = String(error);
