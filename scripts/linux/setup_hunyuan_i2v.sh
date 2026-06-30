@@ -9,6 +9,7 @@ HUNYUAN_TEXT_ENCODER_REPO="${HUNYUAN_TEXT_ENCODER_REPO:-xtuner/llava-llama-3-8b-
 HUNYUAN_CLIP_REPO="${HUNYUAN_CLIP_REPO:-openai/clip-vit-large-patch14}"
 HUNYUAN_TORCH_INDEX_URL="${HUNYUAN_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu124}"
 HUNYUAN_TORCH_PACKAGES="${HUNYUAN_TORCH_PACKAGES:-torch torchvision torchaudio}"
+HUNYUAN_FORCE_PIP_PACKAGES="${HUNYUAN_FORCE_PIP_PACKAGES:-diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22}"
 
 # Optional Hugging Face token for private/gated model downloads.
 # Fill it manually if needed, for example:
@@ -42,7 +43,7 @@ Options:
 Environment:
   HUNYUAN_ROOT, HUNYUAN_CKPT, HUNYUAN_REPO_URL, HUNYUAN_MODEL_REPO,
   HUNYUAN_TEXT_ENCODER_REPO, HUNYUAN_CLIP_REPO, HF_TOKEN,
-  HUNYUAN_TORCH_INDEX_URL, HUNYUAN_TORCH_PACKAGES
+  HUNYUAN_TORCH_INDEX_URL, HUNYUAN_TORCH_PACKAGES, HUNYUAN_FORCE_PIP_PACKAGES
 
 Notes:
   Large model downloads can take a long time and consume substantial disk space.
@@ -251,7 +252,7 @@ for line in source.read_text(encoding="utf-8").splitlines():
     if package_name == "tokenizers" and "==0.15.0" in normalized:
         skipped.append(line)
         continue
-    if package_name in {"torch", "torchvision", "torchaudio"}:
+    if package_name in {"torch", "torchvision", "torchaudio", "transformers"}:
         skipped.append(line)
         continue
     out.append(line)
@@ -259,10 +260,10 @@ for line in source.read_text(encoding="utf-8").splitlines():
 target.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 if skipped:
-    print("Using compatible Hunyuan requirements: skipped old tokenizers pin(s):")
+    print("Using compatible Hunyuan requirements: skipped incompatible package pin(s):")
     for item in skipped:
         print(f"  {item}")
-    print("transformers will install a matching tokenizers version automatically.")
+    print("Pinned Hunyuan packages will be installed after requirements.")
 PY
 
   python3 -m pip install -r "$compat_path"
@@ -283,6 +284,10 @@ if [[ "$NO_INSTALL" -eq 0 ]]; then
   python3 -m pip install --upgrade pip
   install_compatible_torch
   install_hunyuan_requirements
+  if [[ -n "$HUNYUAN_FORCE_PIP_PACKAGES" ]]; then
+    echo "Installing pinned Hunyuan packages: $HUNYUAN_FORCE_PIP_PACKAGES"
+    python3 -m pip install --force-reinstall $HUNYUAN_FORCE_PIP_PACKAGES
+  fi
   python3 -m pip install "huggingface_hub[cli]" hf_transfer
 fi
 

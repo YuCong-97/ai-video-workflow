@@ -19,6 +19,13 @@ if str(ROOT) not in sys.path:
 
 from tools.config_loader import load_project_config
 
+DEFAULT_HUNYUAN_FORCE_PIP_PACKAGES = "diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22"
+DEFAULT_HUNYUAN_EXTRA_PIP_PACKAGES = (
+    "loguru imageio imageio-ffmpeg diffusers==0.31.0 "
+    "transformers==4.47.1 tokenizers>=0.21,<0.22 deepspeed tensorboard"
+)
+HUNYUAN_RUNTIME_READY: set[Path] = set()
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Batch generate videos from keyframes and prompt CSV.")
@@ -155,14 +162,14 @@ def compatible_requirements_path(requirements: Path, logger: logging.Logger) -> 
         if package_name == "tokenizers" and "==0.15.0" in normalized:
             skipped.append(line)
             continue
-        if package_name in {"torch", "torchvision", "torchaudio"}:
+        if package_name in {"torch", "torchvision", "torchaudio", "transformers"}:
             skipped.append(line)
             continue
         output.append(line)
     compat_path.write_text("\n".join(output) + "\n", encoding="utf-8")
     if skipped:
         logger.info(
-            "Using compatible Hunyuan requirements, skipped old tokenizers pin(s): %s",
+            "Using compatible Hunyuan requirements, skipped incompatible package pin(s): %s",
             "; ".join(skipped),
         )
     return compat_path
@@ -223,6 +230,33 @@ def missing_python_modules(modules: list[str], python_bin: str, cwd: Path, logge
     return [module for module in modules if not has_python_module(module, python_bin, cwd, logger)]
 
 
+def pinned_package_version(packages: str, package_name: str) -> str | None:
+    package_name = package_name.lower()
+    for item in shlex.split(packages):
+        normalized = item.strip()
+        if normalized.lower().startswith(f"{package_name}=="):
+            return normalized.split("==", 1)[1]
+    return None
+
+
+def python_package_version(package_name: str, python_bin: str, cwd: Path) -> str | None:
+    script = (
+        "from importlib.metadata import version, PackageNotFoundError\n"
+        f"try:\n    print(version({package_name!r}))\n"
+        "except PackageNotFoundError:\n    raise SystemExit(1)\n"
+    )
+    result = subprocess.run(
+        [python_bin, "-c", script],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
 def config_string(config: dict[str, Any], key: str, default: str = "") -> str:
     value = str(config.get(key, "") or "").strip()
     if not value or "${" in value:
@@ -241,18 +275,17 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
     if str(video_gen.get("auto_install_deps", "true")).lower() in {"0", "false", "no"}:
         return
 
+    runtime_key = hunyuan_root.resolve()
+    if runtime_key in HUNYUAN_RUNTIME_READY:
+        return
+
     python_bin = str(video_gen.get("python_bin", "python3"))
     install_compatible_torch(python_bin, video_gen, logger, hunyuan_root)
     default_required = "loguru imageio diffusers.models.autoencoders.autoencoder_kl deepspeed tensorboard"
     required_modules = shlex.split(config_string(video_gen, "required_modules", default_required))
     requirements = hunyuan_root / "requirements.txt"
     missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
-    default_force = "diffusers==0.31.0 transformers==4.48.0 tokenizers>=0.21,<0.22"
-    force_packages = config_string(video_gen, "force_pip_packages", default_force)
-    if force_packages and missing:
-        logger.info("Installing pinned Hunyuan packages because modules are incompatible or missing: %s", ", ".join(missing))
-        run_command([python_bin, "-m", "pip", "install", "--force-reinstall", *shlex.split(force_packages)], logger, cwd=hunyuan_root)
-        missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
+    force_packages = config_string(video_gen, "force_pip_packages", DEFAULT_HUNYUAN_FORCE_PIP_PACKAGES)
 
     if requirements.exists() and missing:
         logger.info("Installing Hunyuan requirements because modules are missing: %s", ", ".join(missing))
@@ -262,15 +295,21 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
             cwd=hunyuan_root,
         )
 
-    default_extra = (
-        "loguru imageio imageio-ffmpeg diffusers==0.31.0 "
-        "transformers==4.48.0 tokenizers>=0.21,<0.22 deepspeed tensorboard"
-    )
-    extra_packages = config_string(video_gen, "extra_pip_packages", default_extra)
+    expected_transformers = pinned_package_version(force_packages, "transformers")
+    installed_transformers = python_package_version("transformers", python_bin, hunyuan_root) if expected_transformers else None
+    missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
+    if force_packages and (missing or (expected_transformers and installed_transformers != expected_transformers)):
+        reason = ", ".join(missing) if missing else f"transformers {installed_transformers or '<missing>'} != {expected_transformers}"
+        logger.info("Installing pinned Hunyuan packages because runtime is incompatible: %s", reason)
+        run_command([python_bin, "-m", "pip", "install", "--force-reinstall", *shlex.split(force_packages)], logger, cwd=hunyuan_root)
+
+    extra_packages = config_string(video_gen, "extra_pip_packages", DEFAULT_HUNYUAN_EXTRA_PIP_PACKAGES)
     missing = missing_python_modules(required_modules, python_bin, hunyuan_root, logger)
     if extra_packages and missing:
         logger.info("Installing Hunyuan extra packages because modules are missing: %s", ", ".join(missing))
         run_command([python_bin, "-m", "pip", "install", *shlex.split(extra_packages)], logger, cwd=hunyuan_root)
+
+    HUNYUAN_RUNTIME_READY.add(runtime_key)
 
 
 def ensure_hunyuan_i2v_weights(hunyuan_ckpt: Path, video_gen: dict[str, Any], logger: logging.Logger) -> None:

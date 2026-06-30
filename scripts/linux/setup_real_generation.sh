@@ -177,6 +177,8 @@ optional_values = {
     "HUNYUAN_CLIP_REPO": "openai/clip-vit-large-patch14",
     "HUNYUAN_TORCH_INDEX_URL": "https://download.pytorch.org/whl/cu124",
     "HUNYUAN_TORCH_PACKAGES": "torch torchvision torchaudio",
+    "HUNYUAN_FORCE_PIP_PACKAGES": "diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22",
+    "HUNYUAN_EXTRA_PIP_PACKAGES": "loguru imageio imageio-ffmpeg diffusers==0.31.0 transformers==4.47.1 tokenizers>=0.21,<0.22 deepspeed tensorboard",
 }
 values.update({key: value for key, value in optional_values.items() if value})
 
