@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 HOST="0.0.0.0"
 PORT="${APP_PORT:-7860}"
+DEFAULT_HUNYUAN_ROOT="${DEFAULT_HUNYUAN_ROOT:-/workspace/HunyuanVideo-I2V}"
 DEFAULT_COMFYUI_CKPT_URL="${DEFAULT_COMFYUI_CKPT_URL:-https://huggingface.co/Lykon/DreamShaper/resolve/main/DreamShaper_8_pruned.safetensors}"
 DEFAULT_COMFYUI_CKPT_NAME="${DEFAULT_COMFYUI_CKPT_NAME:-DreamShaper_8_pruned.safetensors}"
 
@@ -43,7 +44,7 @@ Usage:
                     [--comfyui-ckpt-url https://example.com/model.safetensors]
                     [--comfyui-ckpt-path /path/to/model.safetensors]
                     [--comfyui-ckpt-name DreamShaper_8_pruned.safetensors]
-                    [--hunyuan-root /workspace/HunyuanVideo-1.5]
+                    [--hunyuan-root /workspace/HunyuanVideo-I2V]
                     [--hunyuan-ckpt /models/hunyuan/ckpts]
                     [--workflow /path/to/comfyui_workflow_api.json]
                     [--workflow-url https://example.com/workflow.json]
@@ -324,6 +325,10 @@ if [[ -z "${COMFYUI_PYTHON_BIN:-}" ]]; then
 fi
 
 if [[ "$RUNPOD_FULL" -eq 1 ]]; then
+  if [[ -z "$HUNYUAN_ROOT_ARG" && ( -z "${HUNYUAN_ROOT:-}" || "${HUNYUAN_ROOT:-}" == "/workspace/HunyuanVideo-1.5" ) ]]; then
+    export HUNYUAN_ROOT="$DEFAULT_HUNYUAN_ROOT"
+    set_env_value "HUNYUAN_ROOT" "$HUNYUAN_ROOT"
+  fi
   if [[ -z "${COMFYUI_CKPT_URL:-}" && -z "${COMFYUI_CKPT_PATH:-}" ]]; then
     export COMFYUI_CKPT_URL="$DEFAULT_COMFYUI_CKPT_URL"
     set_env_value "COMFYUI_CKPT_URL" "$COMFYUI_CKPT_URL"
@@ -337,7 +342,7 @@ fi
 if [[ "$SETUP_REAL_GEN" -eq 1 ]]; then
   setup_args=(
     --comfyui-dir "${COMFYUI_DIR:-/workspace/ComfyUI}"
-    --hunyuan-root "${HUNYUAN_ROOT:-/workspace/HunyuanVideo-I2V}"
+    --hunyuan-root "${HUNYUAN_ROOT:-$DEFAULT_HUNYUAN_ROOT}"
     --hunyuan-ckpt "${HUNYUAN_CKPT:-/models/hunyuan/ckpts}"
   )
   if [[ -n "$WORKFLOW_ARG" ]]; then
@@ -395,12 +400,12 @@ first_existing_dir() {
 detect_hunyuan_root() {
   for candidate in \
     "${HUNYUAN_ROOT:-}" \
-    "/workspace/HunyuanVideo-1.5" \
     "/workspace/HunyuanVideo-I2V" \
     "/workspace/HunyuanVideo" \
+    "/workspace/HunyuanVideo-1.5" \
     "/workspace/HunyuanVideo-1.5/HunyuanVideo-I2V" \
-    "/workspace/aiVideoWorkFlow/external/HunyuanVideo-1.5" \
-    "/workspace/aiVideoWorkFlow/external/HunyuanVideo-I2V"
+    "/workspace/aiVideoWorkFlow/external/HunyuanVideo-I2V" \
+    "/workspace/aiVideoWorkFlow/external/HunyuanVideo-1.5"
   do
     if [[ -d "$candidate" && -f "$candidate/sample_image2video.py" ]]; then
       echo "$candidate"
@@ -417,8 +422,8 @@ detect_hunyuan_ckpt() {
     "/models/hunyuan" \
     "/workspace/models/hunyuan/ckpts" \
     "/workspace/models/hunyuan" \
-    "/workspace/HunyuanVideo-1.5/ckpts" \
     "/workspace/HunyuanVideo-I2V/ckpts" \
+    "/workspace/HunyuanVideo-1.5/ckpts" \
     "/workspace/aiVideoWorkFlow/models/hunyuan/ckpts"
   do
     if [[ -d "$candidate" ]] && find "$candidate" -mindepth 1 -maxdepth 2 \( -type f -o -type l \) | grep -q .; then
@@ -432,7 +437,7 @@ detect_hunyuan_ckpt() {
 ensure_dir "models"
 ensure_dir "models/hunyuan/ckpts"
 ensure_dir "external"
-ensure_dir "external/HunyuanVideo-1.5"
+ensure_dir "external/HunyuanVideo-I2V"
 ensure_dir "data/jobs"
 ensure_dir "data/prompts"
 ensure_dir "assets/references"
