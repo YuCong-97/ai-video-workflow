@@ -275,12 +275,13 @@ def ensure_hunyuan_runtime(hunyuan_root: Path, video_gen: dict[str, Any], logger
 
 def ensure_hunyuan_i2v_weights(hunyuan_ckpt: Path, video_gen: dict[str, Any], logger: logging.Logger) -> None:
     i2v_weight = hunyuan_ckpt / "hunyuan-video-i2v-720p" / "transformers" / "mp_rank_00_model_states.pt"
-    if i2v_weight.exists():
+    i2v_vae_config = i2v_vae_config_path(hunyuan_ckpt)
+    if i2v_weight.exists() and i2v_vae_config.exists():
         return
 
     if not config_bool(video_gen, "auto_download_weights", False):
         raise FileNotFoundError(
-            f"Hunyuan I2V weight missing: {i2v_weight}. "
+            f"Hunyuan I2V files missing: {i2v_weight}, {i2v_vae_config}. "
             "Download with: python3 -m pip install -U 'huggingface_hub[cli]' hf_transfer && "
             f"HF_HUB_ENABLE_HF_TRANSFER=1 hf download tencent/HunyuanVideo-I2V --local-dir {shlex.quote(str(hunyuan_ckpt))}. "
             "Or set video_gen.auto_download_weights=true after confirming disk space."
@@ -312,12 +313,20 @@ def ensure_hunyuan_i2v_weights(hunyuan_ckpt: Path, video_gen: dict[str, Any], lo
         logger.info("download stderr: %s", result.stderr[-4000:])
     if result.returncode != 0:
         raise RuntimeError(f"Hunyuan weight download failed exit={result.returncode}: {result.stderr[-2000:]}")
-    if not i2v_weight.exists():
-        raise FileNotFoundError(f"Hunyuan I2V download finished but expected weight is still missing: {i2v_weight}")
+    missing = [path for path in [i2v_weight, i2v_vae_config] if not path.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Hunyuan I2V download finished but expected files are still missing: "
+            + ", ".join(str(path) for path in missing)
+        )
 
 
 def i2v_weight_path(hunyuan_ckpt: Path) -> Path:
     return hunyuan_ckpt / "hunyuan-video-i2v-720p" / "transformers" / "mp_rank_00_model_states.pt"
+
+
+def i2v_vae_config_path(hunyuan_ckpt: Path) -> Path:
+    return hunyuan_ckpt / "hunyuan-video-i2v-720p" / "vae" / "config.json"
 
 
 def resolve_hunyuan_root(configured: Path, logger: logging.Logger) -> Path:
@@ -353,6 +362,14 @@ def detect_hunyuan_ckpt(configured: Path, hunyuan_root: Path, logger: logging.Lo
 
 def ensure_hunyuan_ckpt_symlink(hunyuan_root: Path, hunyuan_ckpt: Path, logger: logging.Logger) -> None:
     link_path = hunyuan_root / "ckpts"
+    required_paths = [i2v_weight_path(hunyuan_ckpt), i2v_vae_config_path(hunyuan_ckpt)]
+    missing_required = [path for path in required_paths if not path.exists()]
+    if missing_required:
+        raise FileNotFoundError(
+            "Hunyuan checkpoint directory is incomplete. Missing: "
+            + ", ".join(str(path) for path in missing_required)
+        )
+
     if link_path.is_symlink():
         current_target = link_path.resolve()
         if current_target != hunyuan_ckpt.resolve():
@@ -366,13 +383,14 @@ def ensure_hunyuan_ckpt_symlink(hunyuan_root: Path, hunyuan_ckpt: Path, logger: 
         link_path.symlink_to(hunyuan_ckpt, target_is_directory=True)
         return
 
-    if not i2v_weight_path(link_path).exists():
-        logger.warning(
-            "Hunyuan local ckpts directory exists but required I2V weight is not visible there: %s. "
-            "VAE loading may still fail if HunyuanVideo expects ./ckpts. Consider moving or linking it to %s.",
-            link_path,
-            hunyuan_ckpt,
-        )
+    if i2v_weight_path(link_path).exists() and i2v_vae_config_path(link_path).exists():
+        return
+
+    backup_path = hunyuan_root / f"ckpts.local_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    logger.warning("Backing up incomplete Hunyuan local ckpts directory: %s -> %s", link_path, backup_path)
+    link_path.rename(backup_path)
+    logger.info("Creating Hunyuan ckpts symlink: %s -> %s", link_path, hunyuan_ckpt)
+    link_path.symlink_to(hunyuan_ckpt, target_is_directory=True)
 
 
 def build_command(row: dict[str, str], video_gen: dict[str, Any], save_dir: Path) -> str:

@@ -115,6 +115,45 @@ has_hunyuan_i2v_weight() {
   [[ -f "$path/hunyuan-video-i2v-720p/transformers/mp_rank_00_model_states.pt" ]]
 }
 
+has_hunyuan_i2v_vae() {
+  local path="$1"
+  [[ -f "$path/hunyuan-video-i2v-720p/vae/config.json" ]]
+}
+
+ensure_local_ckpts_link() {
+  local link_path="$HUNYUAN_ROOT/ckpts"
+  local backup_path=""
+
+  if ! has_hunyuan_i2v_weight "$HUNYUAN_CKPT" || ! has_hunyuan_i2v_vae "$HUNYUAN_CKPT"; then
+    echo "Hunyuan checkpoint directory is incomplete:"
+    echo "  expected weight: $HUNYUAN_CKPT/hunyuan-video-i2v-720p/transformers/mp_rank_00_model_states.pt"
+    echo "  expected VAE config: $HUNYUAN_CKPT/hunyuan-video-i2v-720p/vae/config.json"
+    return 1
+  fi
+
+  if [[ -L "$link_path" ]]; then
+    if [[ "$(readlink -f "$link_path")" != "$(readlink -f "$HUNYUAN_CKPT")" ]]; then
+      rm -f "$link_path"
+      ln -s "$HUNYUAN_CKPT" "$link_path"
+    fi
+    return 0
+  fi
+
+  if [[ ! -e "$link_path" ]]; then
+    ln -s "$HUNYUAN_CKPT" "$link_path"
+    return 0
+  fi
+
+  if has_hunyuan_i2v_weight "$link_path" && has_hunyuan_i2v_vae "$link_path"; then
+    return 0
+  fi
+
+  backup_path="$HUNYUAN_ROOT/ckpts.local_backup_$(date +%Y%m%d_%H%M%S)"
+  echo "Backing up incomplete local ckpts directory: $link_path -> $backup_path"
+  mv "$link_path" "$backup_path"
+  ln -s "$HUNYUAN_CKPT" "$link_path"
+}
+
 torch_cuda_ok() {
   python3 - <<'PY' >/dev/null 2>&1
 import torch
@@ -199,13 +238,14 @@ fi
 
 if [[ "$NO_MODEL" -eq 0 ]]; then
   mkdir -p "$HUNYUAN_CKPT"
-  if [[ "$FORCE_MODEL_DOWNLOAD" -eq 0 ]] && has_hunyuan_i2v_weight "$HUNYUAN_CKPT"; then
+  if [[ "$FORCE_MODEL_DOWNLOAD" -eq 0 ]] && has_hunyuan_i2v_weight "$HUNYUAN_CKPT" && has_hunyuan_i2v_vae "$HUNYUAN_CKPT"; then
     echo "Hunyuan I2V weight already exists, skipping model download: $HUNYUAN_CKPT"
     echo "Use --force-model-download to force Hugging Face download/resume."
   else
     if has_model_files "$HUNYUAN_CKPT"; then
-      echo "Some Hunyuan model files exist, but required I2V weight is missing:"
+      echo "Some Hunyuan model files exist, but required I2V files are missing:"
       echo "  $HUNYUAN_CKPT/hunyuan-video-i2v-720p/transformers/mp_rank_00_model_states.pt"
+      echo "  $HUNYUAN_CKPT/hunyuan-video-i2v-720p/vae/config.json"
       echo "Running Hugging Face download/resume."
     fi
     export HF_HUB_ENABLE_HF_TRANSFER=1
@@ -230,6 +270,8 @@ PY
     fi
   fi
 fi
+
+ensure_local_ckpts_link
 
 echo ""
 echo "HunyuanVideo-I2V prepared:"
