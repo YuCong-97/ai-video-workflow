@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -27,6 +29,40 @@ def has_weight_files(path: Path) -> bool:
     if not path.exists() or not path.is_dir():
         return False
     return any(item.is_file() or item.is_symlink() for item in path.rglob("*"))
+
+
+def validate_comfyui_workflow(path: Path) -> list[str]:
+    errors: list[str] = []
+    try:
+        workflow: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return [f"ComfyUI workflow JSON is invalid: {exc}"]
+
+    if "note" in workflow or "placeholders" in workflow:
+        errors.append("ComfyUI workflow is still the placeholder/example file.")
+
+    api_nodes = [
+        node
+        for node in workflow.values()
+        if isinstance(node, dict) and "class_type" in node and isinstance(node.get("inputs"), dict)
+    ]
+    if not api_nodes:
+        errors.append("ComfyUI workflow is not API format; expected nodes with class_type and inputs.")
+
+    workflow_text = json.dumps(workflow, ensure_ascii=False)
+    required_placeholders = [
+        "__PROMPT__",
+        "__NEGATIVE_PROMPT__",
+        "__SEED__",
+        "__WIDTH__",
+        "__HEIGHT__",
+        "__OUTPUT_PREFIX__",
+    ]
+    missing = [placeholder for placeholder in required_placeholders if placeholder not in workflow_text]
+    if missing:
+        errors.append(f"ComfyUI workflow missing placeholders: {', '.join(missing)}")
+
+    return errors
 
 
 def main() -> None:
@@ -62,7 +98,11 @@ def main() -> None:
     if not workflow_path.exists():
         errors.append(f"ComfyUI API workflow missing: {workflow_path}")
     else:
-        print("ComfyUI workflow file: OK")
+        workflow_errors = validate_comfyui_workflow(workflow_path)
+        if workflow_errors:
+            errors.extend(workflow_errors)
+        else:
+            print("ComfyUI workflow file: OK")
 
     if is_unset(str(hunyuan_root)) or not hunyuan_root.exists():
         errors.append(f"HUNYUAN_ROOT missing: {hunyuan_root}")

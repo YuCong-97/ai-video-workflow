@@ -101,16 +101,27 @@ def apply_workflow_placeholders(workflow: dict[str, Any], row: dict[str, str], i
     replacements = {
         "__PROMPT__": row.get("prompt", ""),
         "__NEGATIVE_PROMPT__": row.get("negative_prompt", ""),
-        "__SEED__": str(row.get("seed", "")),
-        "__WIDTH__": str(image_gen.get("width", 832)),
-        "__HEIGHT__": str(image_gen.get("height", 1216)),
+        "__SEED__": int(row.get("seed") or 0),
+        "__WIDTH__": int(image_gen.get("width", 832)),
+        "__HEIGHT__": int(image_gen.get("height", 1216)),
         "__SHOT_ID__": row.get("shot_id", ""),
         "__OUTPUT_PREFIX__": Path(row.get("output_image", "output.png")).stem,
     }
-    text = json.dumps(workflow, ensure_ascii=False)
-    for key, value in replacements.items():
-        text = text.replace(key, str(value))
-    return json.loads(text)
+
+    def replace_value(value: Any) -> Any:
+        if isinstance(value, str):
+            if value in replacements:
+                return replacements[value]
+            for key, replacement in replacements.items():
+                value = value.replace(key, str(replacement))
+            return value
+        if isinstance(value, list):
+            return [replace_value(item) for item in value]
+        if isinstance(value, dict):
+            return {key: replace_value(item) for key, item in value.items()}
+        return value
+
+    return replace_value(workflow)
 
 
 def validate_comfyui_api_workflow(workflow: dict[str, Any], workflow_path: Path) -> None:
